@@ -40,11 +40,20 @@ function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
+    // 超时兜底：元数据写入均为 `-c copy`，正常应秒级完成；超时直接终止，避免任务卡死
+    const timer = setTimeout(() => {
+      p.kill('SIGKILL')
+      reject(new Error('ffmpeg 超时（60s），已终止'))
+    }, 60_000)
     p.stderr?.on('data', (c) => {
       err += String(c)
     })
-    p.on('error', reject)
+    p.on('error', (e) => {
+      clearTimeout(timer)
+      reject(e)
+    })
     p.on('close', (code) => {
+      clearTimeout(timer)
       if (code === 0) resolve()
       else reject(new Error(err.slice(-800) || `ffmpeg exit ${code}`))
     })

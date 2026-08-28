@@ -83,11 +83,19 @@ export function probeAudioDurationSeconds(filePath: string): Promise<number | nu
       { stdio: ['ignore', 'pipe', 'ignore'] },
     )
     let out = ''
+    const timer = setTimeout(() => {
+      p.kill('SIGKILL')
+      resolve(null)
+    }, 30_000)
     p.stdout?.on('data', (c) => {
       out += String(c)
     })
-    p.on('error', () => resolve(null))
+    p.on('error', () => {
+      clearTimeout(timer)
+      resolve(null)
+    })
     p.on('close', () => {
+      clearTimeout(timer)
       const n = Number(String(out).trim())
       resolve(Number.isFinite(n) && n > 0 ? n : null)
     })

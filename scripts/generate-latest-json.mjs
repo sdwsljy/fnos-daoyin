@@ -12,7 +12,7 @@ if (!version) {
   process.exit(1)
 }
 
-const repo = 'daoyin/daoyin'
+const repo = 'sdwsljy/fnos-daoyin'
 const tag = `v${version.replace(/^v/i, '')}`
 const changelog =
   notesPath && existsSync(resolve(notesPath))

@@ -44,6 +44,10 @@
           <button class="btn-secondary" @click="batchReDownload">强制重新下载（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchDelete">批量删除（{{ selectedCount }}）</button>
         </template>
+        <template v-else-if="filter === 'cancelled'">
+          <button class="btn-secondary" @click="batchRetry">批量重试（{{ selectedCount }}）</button>
+          <button class="btn-secondary" @click="batchDelete">批量删除（{{ selectedCount }}）</button>
+        </template>
         <template v-else>
           <button class="btn-secondary" @click="batchCancel">批量取消（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchRetry">批量重试（{{ selectedCount }}）</button>
@@ -92,6 +96,7 @@
         </template>
         <template v-else-if="t.status === 'failed' || t.status === 'cancelled'">
           <button class="btn-ghost" @click="retry(t.id)">重试</button>
+          <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
           <button class="btn-ghost" @click="openSwitchSource(t)">换源</button>
           <button class="btn-ghost" @click="openSwitchQuality(t)">换音质</button>
         </template>
@@ -135,6 +140,12 @@
       @close="switchQualityTarget = null"
       @confirm="doSwitchQuality"
     />
+    <ManualMatchDialog
+      v-if="manualMatchTarget"
+      :task="manualMatchTarget"
+      @close="manualMatchTarget = null"
+      @confirm="doManualMatch"
+    />
   </div>
 </template>
 
@@ -147,12 +158,13 @@ import { useToast } from '~/composables/useToast'
 const { tasks, connect } = useDownloadEvents()
 const toast = useToast()
 
-const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing'>('all')
+const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing' | 'cancelled'>('all')
 const filterTabs = [
   { value: 'all', label: '全部' },
   { value: 'downloading', label: '下载中' },
   { value: 'failed', label: '下载失败' },
   { value: 'completed', label: '下载完成' },
+  { value: 'cancelled', label: '已取消' },
   { value: 'existing', label: '已存在' },
 ] as const
 
@@ -162,6 +174,8 @@ function taskInFilter(t: DownloadTask, f: typeof filter.value) {
       return t.status === 'running' || t.status === 'queued'
     case 'failed':
       return t.status === 'failed'
+    case 'cancelled':
+      return t.status === 'cancelled'
     case 'completed':
       return t.status === 'completed'
     case 'existing':
@@ -210,6 +224,7 @@ const deleteTarget = ref<DownloadTask | null>(null)
 const batchDeleteOpen = ref(false)
 const switchSourceTarget = ref<DownloadTask | null>(null)
 const switchQualityTarget = ref<DownloadTask | null>(null)
+const manualMatchTarget = ref<DownloadTask | null>(null)
 const batchSwitchSourceTargets = ref<DownloadTask[]>([])
 
 const sourcesCache = ref<Array<{ id: string; name: string; platform: string; status: string }>>([])
@@ -411,6 +426,28 @@ async function doSwitchSource(sourceId: string) {
 
 function openSwitchQuality(t: DownloadTask) {
   switchQualityTarget.value = t
+}
+
+function openManualMatch(t: DownloadTask) {
+  manualMatchTarget.value = t
+}
+
+async function doManualMatch(payload: {
+  title: string
+  artist: string
+  album?: string
+  platform: string
+  externalId?: string
+  musicInfo: Record<string, any>
+}) {
+  const t = manualMatchTarget.value
+  if (!t) return
+  try {
+    await $fetch(`/api/downloads/${t.id}/manual-match`, { method: 'POST', body: payload })
+    toast.success('已匹配并重新入队')
+  } catch (e: any) {
+    toast.error(e?.statusMessage || e?.message || '手动匹配失败')
+  }
 }
 
 async function doSwitchQuality(quality: string) {

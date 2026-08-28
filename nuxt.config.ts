@@ -44,10 +44,10 @@ export default defineNuxtConfig({
     public: {
       appName: '盗音',
       appVersion: pkg.version,
-      repoUrl: 'https://github.com/daoyin/daoyin',
-      feedbackUrl: 'https://github.com/daoyin/daoyin/issues/new',
+      repoUrl: 'https://github.com/sdwsljy/fnos-daoyin',
+      feedbackUrl: 'https://github.com/sdwsljy/fnos-daoyin/issues/new',
       updateManifestUrl:
-        'https://github.com/daoyin/daoyin/releases/latest/download/latest.json',
+        'https://github.com/sdwsljy/fnos-daoyin/releases/latest/download/latest.json',
     },
   },
 })

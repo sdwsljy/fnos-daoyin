@@ -562,6 +562,79 @@ export function batchSwitchSourceAndRetry(
   return { count: ids.length, items }
 }
 
+/**
+ * 手动匹配：用户搜索选定的歌曲（可跨平台）替换本任务的信息并重新入队下载。
+ * 保留原任务的音质偏好与歌词设置。
+ */
+export function manualMatchTask(
+  id: string,
+  opts: {
+    title: string
+    artist: string
+    album?: string | null
+    platform: string
+    externalId?: string | null
+    musicInfo: Record<string, any>
+  },
+) {
+  const task = getTask(id)
+  if (!task) throw createError({ statusCode: 404, statusMessage: '任务不存在' })
+  if (task.status === 'running' || task.status === 'queued') {
+    throw createError({ statusCode: 400, statusMessage: '任务进行中，请先取消再手动匹配' })
+  }
+  const settings = getSettings()
+  assertDownloadDirWritable(settings.downloadDir)
+
+  const sourceId = listEnabledOkSources(opts.platform)[0]?.id
+  if (!sourceId) {
+    throw createError({ statusCode: 400, statusMessage: `没有可用音源支持平台 ${opts.platform}` })
+  }
+
+  removeTaskFiles(task)
+
+  let prevMusicInfo: Record<string, any> = {}
+  try {
+    prevMusicInfo = JSON.parse(task.music_info_json || '{}')
+  } catch {
+    prevMusicInfo = {}
+  }
+  const musicPayload = {
+    ...opts.musicInfo,
+    __downloadLyric:
+      typeof prevMusicInfo.__downloadLyric === 'boolean'
+        ? prevMusicInfo.__downloadLyric
+        : settings.downloadLyric,
+    __lyricMode:
+      prevMusicInfo.__lyricMode === 'embedded' || prevMusicInfo.__lyricMode === 'external'
+        ? prevMusicInfo.__lyricMode
+        : settings.lyricMode,
+  }
+
+  getDb()
+    .prepare(
+      `UPDATE download_tasks SET
+         title=?, artist=?, album=?, platform=?, source_id=?, quality=?, status='queued', progress=0,
+         external_id=?, match_method='manual', music_info_json=?, error=NULL,
+         file_path=NULL, lyric_path=NULL, file_size=NULL, total_bytes=NULL, attempts=0, updated_at=?
+       WHERE id=?`,
+    )
+    .run(
+      opts.title,
+      opts.artist,
+      opts.album || null,
+      opts.platform,
+      sourceId,
+      task.quality || settings.defaultQuality,
+      opts.externalId || null,
+      JSON.stringify(musicPayload),
+      nowIso(),
+      id,
+    )
+  emitTask(id)
+  kickWorker()
+  return getTask(id)!
+}
+
 function updateTask(id: string, patch: Partial<DownloadTaskRow>) {
   const keys = Object.keys(patch)
   if (!keys.length) return
@@ -603,8 +676,10 @@ async function downloadFile(
   taskId: string,
   opts?: { expectedDurationSec?: number | null; quality?: string | null },
 ) {
+  const controller = new AbortController()
   const res = await fetch(url, {
     headers: { 'User-Agent': 'daoyin/1.0', Referer: 'https://www.google.com/' },
+    signal: controller.signal,
   })
   if (!res.ok || !res.body) {
     const err = new Error(`下载 HTTP ${res.status}`)
@@ -621,6 +696,27 @@ async function downloadFile(
   let received = 0
   const nodeStream = Readable.fromWeb(res.body as any)
   const out = createWriteStream(dest)
+  // 下载超时防护：60s 无数据传输或整体超过 60 分钟即中断，避免任务永久卡在进度条
+  const IDLE_TIMEOUT_MS = 60_000
+  const MAX_TIMEOUT_MS = 60 * 60_000
+  const timeoutError = (msg: string) => Object.assign(new Error(msg), { code: 'DOWNLOAD_TIMEOUT' })
+  let idleTimer: NodeJS.Timeout | null = null
+  const clearIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = null
+  }
+  const overallTimer = setTimeout(() => {
+    clearIdle()
+    controller.abort()
+    nodeStream.destroy(timeoutError('下载超时（整体超过 60 分钟），已中断'))
+  }, MAX_TIMEOUT_MS)
+  const resetIdle = () => {
+    clearIdle()
+    idleTimer = setTimeout(() => {
+      controller.abort()
+      nodeStream.destroy(timeoutError('下载超时（60 秒无数据传输），已中断'))
+    }, IDLE_TIMEOUT_MS)
+  }
   try {
     nodeStream.on('data', (chunk: Buffer) => {
       if (cancelSet.has(taskId)) {
@@ -628,9 +724,11 @@ async function downloadFile(
         return
       }
       received += chunk.length
+      resetIdle()
       if (total > 0) onProgress(Math.min(0.99, received / total), received, total)
       else onProgress(Math.min(0.95, received / (received + 1024 * 1024)), received, 0)
     })
+    resetIdle()
     await pipeline(nodeStream, out)
     onProgress(1, received, total || received)
     return { received, total: total || received }
@@ -642,6 +740,10 @@ async function downloadFile(
       /* ignore */
     }
     throw err
+  } finally {
+    clearIdle()
+    clearTimeout(overallTimer)
+    controller.abort()
   }
 }
 
