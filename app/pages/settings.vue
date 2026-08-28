@@ -147,7 +147,7 @@ const form = ref<SettingsForm>({
   downloadIntervalSec: 0,
   downloadLyric: true,
   lyricMode: 'external',
-  nameTemplate: '{artist} - {title}',
+  nameTemplate: '{title} - {artist}',
   autoFailover: true,
   maxAttempts: 3,
 })

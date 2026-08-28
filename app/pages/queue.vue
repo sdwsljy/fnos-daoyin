@@ -100,6 +100,9 @@
           <button class="btn-ghost" @click="openSwitchSource(t)">换源</button>
           <button class="btn-ghost" @click="openSwitchQuality(t)">换音质</button>
         </template>
+        <template v-if="t.status === 'completed'">
+          <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
+        </template>
         <template v-if="t.status === 'queued' || t.status === 'running' || t.status === 'completed'">
           <button class="btn-ghost" @click="cancel(t.id)">取消</button>
         </template>

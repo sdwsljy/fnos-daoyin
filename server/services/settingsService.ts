@@ -13,7 +13,7 @@ export const AppSettingsSchema = z.object({
   downloadLyric: z.boolean().default(true),
   /** external=仅 .lrc；embedded=仅内嵌到音频 */
   lyricMode: z.enum(['external', 'embedded']).default('external'),
-  nameTemplate: z.string().min(1).default('{artist} - {title}'),
+  nameTemplate: z.string().min(1).default('{title} - {artist}'),
   autoFailover: z.boolean().default(true),
   maxAttempts: z.number().int().min(1).max(8).default(3),
 })
@@ -48,7 +48,7 @@ const DEFAULTS: AppSettings = {
   downloadIntervalSec: 0,
   downloadLyric: true,
   lyricMode: 'external',
-  nameTemplate: '{artist} - {title}',
+  nameTemplate: '{title} - {artist}',
   autoFailover: true,
   maxAttempts: 3,
 }
