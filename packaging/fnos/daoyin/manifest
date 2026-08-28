@@ -1,0 +1,15 @@
+appname=daoyin
+version=1.1.0
+display_name=盗音
+desc=多源音乐搜索、试听与下载助手（洛雪音源兼容）。支持 wy / tx / kg 歌单导入。
+platform=all
+source=thirdparty
+maintainer=胖啥胖
+distributor=胖啥胖
+os_min_version=1.2.0401
+micro_app=true
+desktop_uidir=ui
+desktop_applaunchname=daoyin.main
+install_dep_apps=nodejs_v22
+ctl_stop=true
+changelog=修复：歌单匹配不再自动改名，原名展示、确认后采用候选名；一键下载匹配存疑进失败供确认。

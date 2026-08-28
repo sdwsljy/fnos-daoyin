@@ -1,0 +1,5 @@
+# pnpm 11+：构建脚本白名单（原 package.json#pnpm.onlyBuiltDependencies）
+# 注意：better-sqlite3@13+ 自带 prebuilds/*.node（含 linux-x64 / linux-arm64），
+# 无需本地编译，因此不加入白名单（跳过其 gyp 构建脚本，避免 Windows 缺 VS 工具链时安装失败）。
+allowBuilds:
+  esbuild: true

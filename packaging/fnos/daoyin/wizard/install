@@ -1,0 +1,66 @@
+[
+  {
+    "stepTitle": "访问与鉴权",
+    "items": [
+      {
+        "type": "password",
+        "field": "wizard_auth_token",
+        "label": "访问口令（AUTH_TOKEN，选填）",
+        "initValue": "",
+        "rules": [
+          {
+            "pattern": "^$|^.{6,}$",
+            "message": "口令至少 6 位，或留空以关闭鉴权"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "留空则进入开放模式：无登录页，API 免鉴权（飞牛网关下通常足够）。填写口令则需登录后使用。SESSION_SECRET 安装时自动生成。统一网关通过 /app/daoyin 访问，无需配置对外端口。"
+      }
+    ]
+  },
+  {
+    "stepTitle": "下载目录",
+    "items": [
+      {
+        "type": "radio",
+        "field": "wizard_download_mode",
+        "label": "下载目录方式",
+        "initValue": "default",
+        "options": [
+          {
+            "label": "默认（使用共享目录 daoyin/downloads）",
+            "value": "default"
+          },
+          {
+            "label": "自定义绝对路径（如音乐库挂载点）",
+            "value": "custom"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择下载目录方式"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_download_dir",
+        "label": "自定义下载目录（绝对路径）",
+        "initValue": "",
+        "rules": [
+          {
+            "pattern": "^$|^/.*",
+            "message": "请填写以 / 开头的绝对路径，或留空（默认模式）"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "使用自定义目录时：请先将上方选项选为「自定义绝对路径」，再填写以 / 开头的路径。若只填路径未改选项，安装脚本也会自动按自定义处理。装完后打开盗音「设置」完成「授权当前路径」或「选择并授权目录」，并重启应用。也可在系统应用设置中手动添加目录（兜底）。需飞牛系统 ≥ 1.2.0401。"
+      }
+    ]
+  }
+]

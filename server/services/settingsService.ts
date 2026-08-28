@@ -1,0 +1,94 @@
+import { z } from 'zod'
+import { getDb } from '../utils/db'
+import { assertDownloadDirWritable } from '../utils/downloadDir'
+
+export const AppSettingsSchema = z.object({
+  downloadDir: z.string().min(1),
+  defaultQuality: z.enum(['highest', 'flac24bit', 'flac', '320k', '128k']).default('flac24bit'),
+  concurrency: z.number().int().min(1).max(5).default(1),
+  /** 两次启动任务之间的最小间隔（秒）；0=关闭。用于并发>1 时错开取链 */
+  taskStartIntervalSec: z.number().int().min(0).max(120).default(0),
+  /** 上一任务结束后再等待的秒数；0=关闭。用于批量串行冷静 */
+  downloadIntervalSec: z.number().int().min(0).max(120).default(0),
+  downloadLyric: z.boolean().default(true),
+  /** external=仅 .lrc；embedded=仅内嵌到音频 */
+  lyricMode: z.enum(['external', 'embedded']).default('external'),
+  nameTemplate: z.string().min(1).default('{artist} - {title}'),
+  autoFailover: z.boolean().default(true),
+  maxAttempts: z.number().int().min(1).max(8).default(3),
+})
+
+export type AppSettings = z.infer<typeof AppSettingsSchema>
+
+export const NAME_TEMPLATE_VARS = [
+  { key: '{artist}', desc: '歌手' },
+  { key: '{title}', desc: '歌曲标题' },
+  { key: '{album}', desc: '专辑名（可空）' },
+  { key: '{platform}', desc: '平台代号，如 wy / kw / kg / tx' },
+  { key: '{quality}', desc: '实际音质，如 320k / flac / flac24bit' },
+  { key: '{id}', desc: '歌曲 externalId / songmid' },
+  { key: '{track}', desc: '音轨号（有则写入，无则为空）' },
+] as const
+
+function envDownloadDir(): string | undefined {
+  if (typeof process.env.DOWNLOAD_DIR === 'string' && process.env.DOWNLOAD_DIR.trim()) {
+    return process.env.DOWNLOAD_DIR.trim()
+  }
+  if (typeof process.env.NUXT_DOWNLOAD_DIR === 'string' && process.env.NUXT_DOWNLOAD_DIR.trim()) {
+    return process.env.NUXT_DOWNLOAD_DIR.trim()
+  }
+  return undefined
+}
+
+const DEFAULTS: AppSettings = {
+  downloadDir: './downloads',
+  defaultQuality: 'flac24bit',
+  concurrency: 1,
+  taskStartIntervalSec: 0,
+  downloadIntervalSec: 0,
+  downloadLyric: true,
+  lyricMode: 'external',
+  nameTemplate: '{artist} - {title}',
+  autoFailover: true,
+  maxAttempts: 3,
+}
+
+export function getSettings(): AppSettings {
+  const db = getDb()
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('app') as { value: string } | undefined
+  let stored: Partial<AppSettings> = {}
+  if (row?.value) {
+    try {
+      stored = JSON.parse(row.value)
+    } catch {
+      stored = {}
+    }
+  }
+  const merged = AppSettingsSchema.parse({ ...DEFAULTS, ...stored })
+  // 飞牛 main / Docker 注入的 DOWNLOAD_DIR 优先于库内值
+  const fromEnv = envDownloadDir()
+  if (fromEnv) merged.downloadDir = fromEnv
+  return merged
+}
+
+export function saveSettings(input: Partial<AppSettings>) {
+  let next: AppSettings
+  try {
+    next = AppSettingsSchema.parse({ ...getSettings(), ...input })
+  } catch (err: any) {
+    const detail = err?.issues?.[0]?.message || err?.message || '配置无效'
+    throw createError({ statusCode: 400, statusMessage: `配置无效: ${detail}` })
+  }
+  assertDownloadDirWritable(next.downloadDir)
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run('app', JSON.stringify(next))
+  return next
+}
+
+export function ensureWritableDir(dir: string) {
+  return assertDownloadDirWritable(dir)
+}

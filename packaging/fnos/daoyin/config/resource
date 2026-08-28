@@ -1,0 +1,21 @@
+{
+  "data-share": {
+    "shares": [
+      {
+        "name": "daoyin/data",
+        "permission": {
+          "rw": ["daoyin"]
+        }
+      },
+      {
+        "name": "daoyin/downloads",
+        "permission": {
+          "rw": ["daoyin"]
+        }
+      }
+    ]
+  },
+  "api-scope": [
+    "trim.file.sharedAccess"
+  ]
+}
