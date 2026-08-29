@@ -1,8 +1,8 @@
 {
   "version": "1.2.6",
   "tag": "v1.2.6",
-  "releasedAt": "2026-08-29T21:00:21.794Z",
-  "changelog": "# 盗音 1.2.6\n\n多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用。\n\n## 更新内容\n\n- 新增：队列搜索功能，按歌名 / 歌手 / 文件名过滤任务，便于核实已下载内容。\n- 新增：队列所有状态任务支持「手动匹配」与「删除」；进行中的任务手动匹配时先自动取消再换歌。",
+  "releasedAt": "2026-08-29T21:02:04.618Z",
+  "changelog": "- 新增：队列搜索功能，按歌名 / 歌手 / 文件名过滤任务，便于核实已下载内容。\n- 新增：队列所有状态任务支持「手动匹配」与「删除」；进行中的任务手动匹配时先自动取消再换歌。",
   "downloads": {
     "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v1.2.6",
     "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v1.2.6/daoyin-v1.2.6.fpk"

@@ -1,14 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-# 生成发布说明：仅提取 CHANGELOG 中当前版本的段落（不含历史版本）
+# 生成发布说明：仅提取 CHANGELOG 中当前版本的段落（不含标题/介绍/历史版本）。
+# Release 标题由 name 字段提供，body 只放更新内容，避免重复。
 VERSION="${1:-}"
 OUT="${2:-release_notes.md}"
 {
-  echo "# 盗音 ${VERSION}"
-  echo ""
-  echo "多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用。"
-  echo ""
-  echo "## 更新内容"
   if [ -f CHANGELOG.md ]; then
     awk -v ver="${VERSION}" '
       { line = $0 }
