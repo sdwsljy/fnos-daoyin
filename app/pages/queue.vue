@@ -4,6 +4,12 @@
 
     <div class="toolbar">
       <button class="btn-secondary" @click="refresh">刷新</button>
+      <input
+        v-model="searchQuery"
+        type="search"
+        class="queue-search"
+        placeholder="搜索歌名 / 歌手 / 文件名"
+      />
       <span class="counts">
         完成 {{ counts.completed }} / 下载中 {{ counts.running }} / 失败 {{ counts.failed }}
       </span>
@@ -22,7 +28,7 @@
       </button>
     </div>
 
-    <div v-if="!filteredTasks.length" class="empty">暂无{{ filterLabel }}任务</div>
+    <div v-if="!filteredTasks.length" class="empty">{{ searchQuery ? '未找到匹配的任务' : `暂无${filterLabel}任务` }}</div>
 
     <div class="batch-bar" v-if="filteredTasks.length">
       <label class="check">
@@ -105,6 +111,7 @@
         </template>
         <template v-if="t.status === 'queued' || t.status === 'running'">
           <button class="btn-ghost" @click="cancel(t.id)">取消</button>
+          <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
         </template>
         <button class="btn-ghost" @click="remove(t)">删除</button>
       </div>
@@ -162,6 +169,7 @@ const { tasks, connect, disconnect } = useDownloadEvents()
 const toast = useToast()
 
 const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing' | 'cancelled'>('all')
+const searchQuery = ref('')
 const filterTabs = [
   { value: 'all', label: '全部' },
   { value: 'downloading', label: '下载中' },
@@ -193,7 +201,18 @@ const filterLabel = computed(() => {
   return tab ? tab.label : '该'
 })
 
-const filteredTasks = computed(() => tasks.value.filter((t) => taskInFilter(t, filter.value)))
+const filteredTasks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  return tasks.value.filter((t) => {
+    if (!taskInFilter(t, filter.value)) return false
+    if (!q) return true
+    return (
+      t.title.toLowerCase().includes(q) ||
+      t.artist.toLowerCase().includes(q) ||
+      (t.file_path || '').toLowerCase().includes(q)
+    )
+  })
+})
 
 function countFor(f: (typeof filterTabs)[number]['value']) {
   return tasks.value.filter((t) => taskInFilter(t, f)).length
@@ -435,7 +454,16 @@ function openSwitchQuality(t: DownloadTask) {
   switchQualityTarget.value = t
 }
 
-function openManualMatch(t: DownloadTask) {
+async function openManualMatch(t: DownloadTask) {
+  // 进行中的任务先取消（后端同步标记 cancelled），再打开手动匹配
+  if (t.status === 'queued' || t.status === 'running') {
+    try {
+      await cancel(t.id)
+    } catch (e: any) {
+      toast.error(e?.statusMessage || '取消失败，无法手动匹配')
+      return
+    }
+  }
   manualMatchTarget.value = t
 }
 
@@ -501,6 +529,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.queue-search {
+  flex: 1;
+  max-width: 320px;
 }
 
 .counts {

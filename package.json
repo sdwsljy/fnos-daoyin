@@ -1,6 +1,6 @@
 {
   "name": "daoyin",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "type": "module",
   "private": true,
   "description": "盗音（daoyin）：多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用",
