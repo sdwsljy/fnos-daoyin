@@ -677,7 +677,9 @@ export function manualMatchTask(
       removeFileQuiet(task.file_path)
     }
     removeFileQuiet(task.lyric_path)
-  } else {
+  } else if (task.status !== 'existing') {
+    // failed/cancelled 残留文件由本任务下载，可清理；
+    // existing 的 file_path 是「已存在」文件（属用户），不可删除
     removeTaskFiles(task)
   }
 

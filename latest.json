@@ -1,10 +1,10 @@
 {
-  "version": "1.2.4",
-  "tag": "v1.2.4",
-  "releasedAt": "2026-08-29T20:29:22.958Z",
-  "changelog": "# 盗音 1.2.4\n\n多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用。\n\n## 更新内容\n\n- 变更：「已存在」检测改为优先完整命名匹配，未命中时按「歌名」宽松匹配（忽略歌手差异），歌名一致即视为已存在，避免重复下载。\n- 变更：队列列表移除 200 条上限，显示全部任务。",
+  "version": "1.2.5",
+  "tag": "v1.2.5",
+  "releasedAt": "2026-08-29T20:45:25.449Z",
+  "changelog": "# 盗音 1.2.5\n\n多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用。\n\n## 更新内容\n\n- 修复：队列「已存在」任务缺少「手动匹配」按钮，且出现重复「删除」按钮；手动匹配「已存在」任务不再误删下载目录中已有的文件。",
   "downloads": {
-    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v1.2.4",
-    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v1.2.4/daoyin-v1.2.4.fpk"
+    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v1.2.5",
+    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v1.2.5/daoyin-v1.2.5.fpk"
   }
 }

@@ -92,7 +92,7 @@
       <div class="task-actions">
         <template v-if="t.status === 'existing'">
           <button class="btn-ghost" @click="reDownload(t.id)">重新下载</button>
-          <button class="btn-ghost" @click="remove(t)">删除</button>
+          <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
         </template>
         <template v-else-if="t.status === 'failed' || t.status === 'cancelled'">
           <button class="btn-ghost" @click="retry(t.id)">重试</button>
