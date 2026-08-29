@@ -48,7 +48,7 @@
         </div>
         <div class="field">
           <label>并发数</label>
-          <input v-model.number="form.concurrency" type="number" min="1" max="5" />
+          <input v-model.number="form.concurrency" type="number" min="1" max="20" />
         </div>
         <div class="field-row">
           <div class="field">
@@ -177,13 +177,15 @@ async function load() {
     const data = await $fetch<{ settings: SettingsForm; nameTemplateVars: Array<{ key: string }> }>('/api/settings')
     form.value = { ...form.value, ...data.settings }
     templateVars.value = data.nameTemplateVars
-    await refreshFnOs({ notifyError: true })
-    if (fnos.value?.downloadDir) form.value.downloadDir = fnos.value.downloadDir
   } catch (e: any) {
     toast.error(e?.statusMessage || '加载设置失败')
   } finally {
     loading.value = false
   }
+  // 飞牛授权状态后台刷新，不阻塞设置展示（避免飞牛开放 API/SDK 挂起导致一直转圈）
+  void refreshFnOs({ notifyError: true }).then(() => {
+    if (fnos.value?.downloadDir) form.value.downloadDir = fnos.value.downloadDir
+  })
 }
 
 async function save() {
@@ -229,12 +231,13 @@ async function onRefreshFnOs() {
 }
 
 onMounted(async () => {
-  await ensureSdk()
+  // SDK 初始化后台进行，不阻塞设置加载（避免非飞牛/异常宿主下 ready() 挂起导致转圈）
+  void ensureSdk()
   unbindAuth = bindAuthMessage(() => {
     void refreshFnOs({ notifyError: true })
   })
   await load()
-  await refreshFnOs()
+  void refreshFnOs()
 })
 
 onUnmounted(() => {

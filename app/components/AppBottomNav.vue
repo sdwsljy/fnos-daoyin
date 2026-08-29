@@ -23,25 +23,35 @@ const badge = useDownloadBadge()
   z-index: 100;
   display: flex;
   justify-content: space-around;
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(10, 14, 23, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--color-border);
-  padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
 }
 
 .bottom-link {
   position: relative;
-  padding: 8px 16px;
+  padding: 8px 18px;
+  border-radius: var(--radius);
   color: var(--color-text-dim);
+  font-weight: 500;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.bottom-link:hover {
+  color: var(--color-text);
 }
 
 .bottom-link.router-link-active {
   color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .badge {
   position: absolute;
   top: 2px;
-  right: 4px;
+  right: 6px;
   background: var(--color-danger);
   color: #fff;
   border-radius: 10px;

@@ -794,6 +794,7 @@ async function downloadFile(
     if (total < minBytes) throw previewSizeError(total, expected)
   }
   let received = 0
+  let lastProgressAt = 0
   nodeStream = Readable.fromWeb(res.body as any)
   const stream = nodeStream
   const out = createWriteStream(dest)
@@ -805,6 +806,10 @@ async function downloadFile(
       }
       received += chunk.length
       resetIdle()
+      // 节流：每 200ms 最多上报一次进度，避免批量下载时高频同步写库 + SSE 推送阻塞事件循环
+      const now = Date.now()
+      if (now - lastProgressAt < 200) return
+      lastProgressAt = now
       if (total > 0) onProgress(Math.min(0.99, received / total), received, total)
       else onProgress(Math.min(0.95, received / (received + 1024 * 1024)), received, 0)
     })

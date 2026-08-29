@@ -32,16 +32,17 @@ const { update } = useAppUpdate()
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(8px);
+  background: rgba(10, 14, 23, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--color-border);
 }
 
 .header-inner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0 16px;
-  height: 52px;
+  padding: 0 20px;
+  height: 56px;
   display: flex;
   align-items: center;
   gap: 24px;
@@ -50,14 +51,18 @@ const { update } = useAppUpdate()
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--color-text);
 }
 
 .brand-name {
   font-size: 17px;
   font-weight: 700;
-  color: var(--color-accent);
+  background: linear-gradient(135deg, #2dd4bf, #14b8a6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.5px;
 }
 
 .header-nav {
@@ -67,19 +72,21 @@ const { update } = useAppUpdate()
 }
 
 .nav-link {
-  padding: 6px 12px;
+  padding: 7px 14px;
   border-radius: var(--radius);
   color: var(--color-text-dim);
+  font-weight: 500;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .nav-link:hover {
   color: var(--color-text);
-  background: var(--color-bg-elev);
+  background: var(--color-bg-elev2);
 }
 
 .nav-link.router-link-active {
   color: var(--color-accent);
-  background: rgba(20, 184, 166, 0.12);
+  background: var(--color-accent-soft);
 }
 
 .header-actions {

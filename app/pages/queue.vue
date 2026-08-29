@@ -531,7 +531,7 @@ onUnmounted(() => {
 .filter-tab.active {
   color: var(--color-accent);
   border-color: var(--color-accent);
-  background: rgba(20, 184, 166, 0.08);
+  background: var(--color-accent-soft);
 }
 
 .filter-count {
