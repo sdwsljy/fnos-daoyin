@@ -1,5 +1,5 @@
 appname=daoyin
-version=1.2.2
+version=1.2.4
 display_name=盗音
 desc=多源音乐搜索、试听与下载助手（洛雪音源兼容）。支持 wy / tx / kg 歌单导入。
 platform=all
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=daoyin.main
 install_dep_apps=nodejs_v22
 ctl_stop=true
-changelog=下载并发上限由 5 提升到 20。
+changelog=已存在检测按歌名匹配；队列移除 200 条上限。

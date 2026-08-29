@@ -126,9 +126,9 @@ export function applyNameTemplate(
 
 export function listTasks(status?: string) {
   if (status) {
-    return getDb().prepare('SELECT * FROM download_tasks WHERE status = ? ORDER BY created_at DESC').all(status) as DownloadTaskRow[]
+    return getDb().prepare('SELECT * FROM download_tasks WHERE status = ? ORDER BY updated_at DESC').all(status) as DownloadTaskRow[]
   }
-  return getDb().prepare('SELECT * FROM download_tasks ORDER BY created_at DESC LIMIT 200').all() as DownloadTaskRow[]
+  return getDb().prepare('SELECT * FROM download_tasks ORDER BY updated_at DESC').all() as DownloadTaskRow[]
 }
 
 /** 列出「已完成/已存在」但本地文件已丢失的任务（供缺失文件检测） */
@@ -151,7 +151,9 @@ function extsForQuality(quality?: string | null): string[] {
 }
 
 /**
- * 检测下载目录中是否已存在同名歌曲文件（按命名模板 + 匹配请求音质的扩展名）。
+ * 检测下载目录中是否已存在同名歌曲文件。
+ * 优先按完整命名模板精确匹配；若未命中，再按「歌名」宽松匹配（忽略歌手/专辑差异），
+ * 只要歌名一致即视为已存在，避免重复下载。
  * 返回已存在文件的绝对路径；无则 null。
  */
 export function findExistingFile(opts: {
@@ -175,15 +177,28 @@ export function findExistingFile(opts: {
     id: opts.id || undefined,
     track: opts.track,
   })
+  const titleBase = sanitizeFilename(opts.title)
   let entries: string[]
   try {
     entries = readdirSync(dir)
   } catch {
     return null
   }
-  const wanted = new Set(extsForQuality(opts.quality).map((ext) => `${base}.${ext}`))
+  const exts = extsForQuality(opts.quality)
+  const wanted = new Set(exts.map((ext) => `${base}.${ext}`))
   for (const entry of entries) {
+    // 完整命名模板精确匹配
     if (wanted.has(entry)) {
+      const full = join(dir, entry)
+      try {
+        if (statSync(full).isFile()) return full
+      } catch {
+        /* ignore */
+      }
+      continue
+    }
+    // 只按歌名宽松匹配：忽略歌手差异，歌名一致即视为已存在
+    if (titleBase && matchesTitlePrefix(entry, titleBase, exts)) {
       const full = join(dir, entry)
       try {
         if (statSync(full).isFile()) return full
@@ -193,6 +208,18 @@ export function findExistingFile(opts: {
     }
   }
   return null
+}
+
+/** 文件名是否以「歌名」开头（歌名后跟分隔符或直接扩展名），且扩展名匹配 */
+function matchesTitlePrefix(entry: string, titleBase: string, exts: string[]): boolean {
+  const lower = entry.toLowerCase()
+  for (const ext of exts) {
+    if (!lower.endsWith(`.${ext}`)) continue
+    const stem = entry.slice(0, -(ext.length + 1))
+    if (stem === titleBase) return true
+    if (stem.startsWith(`${titleBase} -`) || stem.startsWith(`${titleBase}-`)) return true
+  }
+  return false
 }
 
 /** 检测下载目录是否已有同模板同名歌曲文件（含大小），供入队/手动匹配复用 */

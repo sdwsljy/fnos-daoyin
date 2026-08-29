@@ -58,7 +58,14 @@ export function useDownloadEvents() {
         const task = JSON.parse((e as MessageEvent).data) as DownloadTask
         const idx = tasks.value.findIndex((t) => t.id === task.id)
         if (idx >= 0) {
-          tasks.value.splice(idx, 1, task)
+          const prev = tasks.value[idx]
+          tasks.value.splice(idx, 1)
+          // 状态变化（入队/开始/完成/失败）时移到顶部；仅进度更新保持原位置
+          if (prev && prev.status !== task.status) {
+            tasks.value.unshift(task)
+          } else {
+            tasks.value.splice(idx, 0, task)
+          }
         } else {
           tasks.value.unshift(task)
         }
