@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-# 生成发布说明（CHANGELOG 摘要）
+# 生成发布说明：仅提取 CHANGELOG 中当前版本的段落（不含历史版本）
 VERSION="${1:-}"
 OUT="${2:-release_notes.md}"
 {
@@ -10,8 +10,12 @@ OUT="${2:-release_notes.md}"
   echo ""
   echo "## 更新内容"
   if [ -f CHANGELOG.md ]; then
-    # 跳过 CHANGELOG 首行「# 更新日志」，避免与「## 更新内容」标题重复
-    tail -n +2 CHANGELOG.md | head -n 30
+    awk -v ver="${VERSION}" '
+      { line = $0 }
+      line == ("## " ver) { in_block = 1; next }
+      in_block && line ~ /^## / { exit }
+      in_block { print }
+    ' CHANGELOG.md
   else
     echo "- 首个版本"
   fi
