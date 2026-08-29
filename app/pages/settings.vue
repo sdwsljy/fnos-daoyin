@@ -21,7 +21,7 @@
             {{ fnos ? `下载模式：${fnos.downloadMode === 'custom' ? '自定义' : '共享目录'}` : '本地开发环境' }}
           </p>
         </div>
-        <div v-if="fnos?.supported" ref="fnosBox" class="fnos-box">
+        <div v-if="fnos?.supported" class="fnos-box">
           <p class="fnos-title">飞牛目录授权</p>
           <p class="hint">
             状态：
@@ -155,7 +155,6 @@ const templateVars = ref<Array<{ key: string }>>([])
 const showChangelog = ref(false)
 const about = ref(false)
 const qualityOptions = ['flac24bit', 'flac', '320k', '192k', '128k']
-const fnosBox = ref<HTMLElement | null>(null)
 
 const toast = useToast()
 const {

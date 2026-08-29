@@ -8,6 +8,7 @@ import { matchTrack, type MatchCandidate } from './trackMatcher'
 import { enqueueDownload } from './downloadQueue'
 import { getSettings } from './settingsService'
 import { assertDownloadDirWritable } from '../utils/downloadDir'
+import { assertSafePublicUrl } from '../utils/ssrfGuard'
 
 export type PlaylistTrackDraft = {
   externalId?: string
@@ -181,7 +182,8 @@ function fetchKugouJson(url: string, headers: Record<string, string>, ms = 20000
           method: 'GET',
           headers,
           timeout: ms,
-          rejectUnauthorized: false,
+          // kg CDN 证书常与域名不匹配，仅对 https 请求关闭校验（已收窄到 kg 专用函数）
+          ...(u.protocol === 'https:' ? { rejectUnauthorized: false } : {}),
         } as any,
         (res) => {
           const chunks: Buffer[] = []
@@ -222,6 +224,8 @@ export async function resolvePlaylistUrl(input: string): Promise<string> {
 
   for (let i = 0; i < 5; i++) {
     if (extractQqPlaylistId(current) || extractNeteasePlaylistId(current)) return current
+
+    await assertSafePublicUrl(current)
 
     const res = await fetchWithTimeout(current, {
       method: 'GET',
@@ -433,7 +437,7 @@ async function parseKugouPlaylist(id: string, url: string): Promise<PlaylistDraf
     const data = await getJson(
       `/api/v3/special/song?specialid=${encodeURIComponent(id)}&page=${page}&pagesize=${pageSize}&area_code=1`,
     )
-    if (data?.status !== 1 && data?.errcode !== 0) {
+    if (data?.status !== 1 || (data?.errcode !== undefined && data.errcode !== 0)) {
       throw new Error(`kugou code ${data?.errcode}/${data?.status}`)
     }
     const chunk = data?.data?.info || []
@@ -830,6 +834,7 @@ export async function matchAndEnqueuePlaylist(
         musicInfo: cand.musicInfo || {
           name: track.title,
           singer: track.artist,
+          id: cand.externalId,
           songmid: cand.externalId,
           hash: cand.externalId,
           source: matchPlatform || track.platform,

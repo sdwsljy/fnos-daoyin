@@ -5,9 +5,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!session.value) {
     await refresh()
   }
-  const requiresAuth = session.value?.authenticated === true
+  const authenticated = session.value?.authenticated === true
   const openPages = ['/login', '/fnos-auth-callback']
-  if (requiresAuth && !openPages.includes(to.path)) {
+  if (!authenticated && !openPages.includes(to.path)) {
     return navigateTo('/login')
   }
 })

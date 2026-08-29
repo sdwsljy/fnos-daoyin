@@ -6,8 +6,8 @@
         <pre class="changelog">{{ update?.latest?.changelog }}</pre>
         <div class="dialog-actions">
           <button class="btn-secondary" @click="emit('close')">暂不更新</button>
-          <a v-if="update?.latest?.downloads?.releasePage" :href="update.latest.downloads.releasePage" target="_blank">
-            <button>前往下载</button>
+          <a v-if="update?.latest?.downloads?.releasePage" :href="update.latest.downloads.releasePage" target="_blank" rel="noopener noreferrer" class="btn-primary">
+            前往下载
           </a>
         </div>
       </div>

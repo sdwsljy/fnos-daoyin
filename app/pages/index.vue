@@ -59,13 +59,13 @@
     <div v-if="items.length" class="pager">
       <button class="btn-secondary" :disabled="page <= 1" @click="page--; doSearch()">上一页</button>
       <span class="page-num">第 {{ page }} 页</span>
-      <button class="btn-secondary" @click="page++; doSearch()">下一页</button>
+      <button class="btn-secondary" :disabled="items.length < 30" @click="page++; doSearch()">下一页</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { platformLabel, formatDuration } from '~/utils/mediaLabels'
 import { usePlayer } from '~/composables/usePlayer'
 import { useToast } from '~/composables/useToast'
@@ -93,6 +93,8 @@ type SearchItem = {
   cover?: string
   qualitys: string[]
   musicInfo: Record<string, any>
+  sourceId?: string
+  sourceName?: string
 }
 
 const platform = ref('wy')
@@ -108,7 +110,7 @@ const previewing = computed(() => previewingId.value !== '')
 
 const { play } = usePlayer()
 const toast = useToast()
-const { connect } = useDownloadEvents()
+const { connect, disconnect } = useDownloadEvents()
 
 async function doSearch() {
   if (!keyword.value.trim()) return
@@ -201,6 +203,10 @@ onMounted(() => {
       platforms.value = d.platforms
     })
     .catch(() => {})
+})
+
+onUnmounted(() => {
+  disconnect()
 })
 </script>
 

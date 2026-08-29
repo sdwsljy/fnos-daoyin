@@ -135,11 +135,28 @@ function resolveConflict(entry: { id: string; name: string; url: string }): Bund
 }
 
 export function parseSourcesBundle(zipBuffer: Buffer): BundlePreviewItem[] {
+  const MAX_ZIP_BYTES = 10 * 1024 * 1024
+  const MAX_ENTRIES = 500
+  const MAX_TOTAL_BYTES = 50 * 1024 * 1024
+  if (zipBuffer.length > MAX_ZIP_BYTES) {
+    throw createError({ statusCode: 400, statusMessage: '完整包 zip 过大（上限 10MB）' })
+  }
   let unzipped: Record<string, Uint8Array>
   try {
     unzipped = unzipSync(new Uint8Array(zipBuffer))
   } catch {
     throw createError({ statusCode: 400, statusMessage: '无法解析 zip 文件' })
+  }
+  const entries = Object.values(unzipped)
+  if (entries.length > MAX_ENTRIES) {
+    throw createError({ statusCode: 400, statusMessage: '完整包条目过多' })
+  }
+  let totalBytes = 0
+  for (const e of entries) {
+    totalBytes += e.length
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      throw createError({ statusCode: 400, statusMessage: '完整包解压后内容过大' })
+    }
   }
 
   const manifestEntry =
@@ -161,7 +178,7 @@ export function parseSourcesBundle(zipBuffer: Buffer): BundlePreviewItem[] {
   if (!manifest || !Array.isArray(manifest.sources)) {
     throw createError({ statusCode: 400, statusMessage: 'manifest.json 格式无效' })
   }
-  if (manifest.version && manifest.version > BUNDLE_VERSION) {
+  if (typeof manifest.version === 'number' && manifest.version > BUNDLE_VERSION) {
     throw createError({
       statusCode: 400,
       statusMessage: `不支持的完整包版本 ${manifest.version}（当前支持 ${BUNDLE_VERSION}）`,

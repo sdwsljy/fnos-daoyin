@@ -31,7 +31,9 @@ export function getSessionSecret(): string {
   const fromEnv = firstDefinedString(process.env.SESSION_SECRET, process.env.NUXT_SESSION_SECRET)
   if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv
   const fromCfg = String(runtimeConfigSafe().sessionSecret ?? '')
-  return fromCfg || 'dev-change-me'
+  // 不再回退固定默认值：缺失时返回空，调用方（login）应 fail-closed 拒绝签发会话，
+  // 避免用公开已知的默认密钥伪造会话绕过鉴权。
+  return fromCfg
 }
 
 export function getDataDirEnv(): string {

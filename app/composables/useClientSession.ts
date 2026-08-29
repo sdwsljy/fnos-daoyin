@@ -1,4 +1,5 @@
 export type ClientSession = {
+  authRequired: boolean
   authenticated: boolean
   session: unknown
 }

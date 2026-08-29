@@ -103,7 +103,7 @@
         <template v-if="t.status === 'completed'">
           <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
         </template>
-        <template v-if="t.status === 'queued' || t.status === 'running' || t.status === 'completed'">
+        <template v-if="t.status === 'queued' || t.status === 'running'">
           <button class="btn-ghost" @click="cancel(t.id)">取消</button>
         </template>
         <button class="btn-ghost" @click="remove(t)">删除</button>
@@ -153,12 +153,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { platformLabel, qualityLabel, statusLabel, formatPercent, formatBytes } from '~/utils/mediaLabels'
 import { useDownloadEvents, type DownloadTask } from '~/composables/useDownloadEvents'
 import { useToast } from '~/composables/useToast'
 
-const { tasks, connect } = useDownloadEvents()
+const { tasks, connect, disconnect } = useDownloadEvents()
 const toast = useToast()
 
 const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing' | 'cancelled'>('all')
@@ -256,6 +256,10 @@ function refresh() {
   $fetch<{ items: DownloadTask[] }>('/api/downloads')
     .then((d) => {
       tasks.value = d.items
+      // 清理已不存在任务的选中状态
+      const ids = new Set(d.items.map((t) => t.id))
+      const next = new Set([...selected.value].filter((id) => ids.has(id)))
+      if (next.size !== selected.value.size) selected.value = next
     })
     .catch(() => {})
 }
@@ -484,6 +488,10 @@ onMounted(() => {
   connect()
   refresh()
   loadSources()
+})
+
+onUnmounted(() => {
+  disconnect()
 })
 </script>
 

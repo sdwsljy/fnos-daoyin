@@ -2,16 +2,10 @@
   "data-share": {
     "shares": [
       {
-        "name": "daoyin/data",
-        "permission": {
-          "rw": ["daoyin"]
-        }
+        "name": "daoyin/data"
       },
       {
-        "name": "daoyin/downloads",
-        "permission": {
-          "rw": ["daoyin"]
-        }
+        "name": "daoyin/downloads"
       }
     ]
   },

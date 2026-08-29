@@ -7,6 +7,9 @@ export default defineEventHandler(async (event) => {
   if (!body?.zip) {
     throw createError({ statusCode: 400, statusMessage: 'zip (base64) 必填' })
   }
+  if (body.zip.length > 15 * 1024 * 1024) {
+    throw createError({ statusCode: 400, statusMessage: '完整包过大（上限 10MB）' })
+  }
   const buffer = Buffer.from(body.zip, 'base64')
   const onConflict = body.onConflict === 'overwrite' ? 'overwrite' : 'skip'
 

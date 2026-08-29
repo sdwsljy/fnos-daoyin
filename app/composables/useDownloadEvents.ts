@@ -26,9 +26,14 @@ export type DownloadTask = {
   updated_at: string
 }
 
+// 模块级单例：连接、重连定时器、引用计数跨组件共享，
+// 避免多页面各持独立连接、卸载后残留连接与重连定时器。
+let es: EventSource | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let connectCount = 0
+
 export function useDownloadEvents() {
   const tasks: Ref<DownloadTask[]> = useState<DownloadTask[]>('daoyin-download-tasks', () => [])
-  let es: EventSource | null = null
 
   /** 拼接 Nuxt baseURL（飞牛网关下为 /app/daoyin/），与 $fetch 行为一致 */
   function apiUrl(path: string) {
@@ -36,8 +41,9 @@ export function useDownloadEvents() {
     return `${base}${path.replace(/^\//, '')}`
   }
 
-  function connect() {
-    if (es || typeof EventSource === 'undefined') return
+  function ensureConnected() {
+    if (typeof EventSource === 'undefined') return
+    if (es) return
     es = new EventSource(apiUrl('/api/downloads/events'))
     es.addEventListener('snapshot', (e) => {
       try {
@@ -61,17 +67,31 @@ export function useDownloadEvents() {
       }
     })
     es.onerror = () => {
-      // EventSource 会自动重连；这里仅兜底关闭旧连接避免重复
       es?.close()
       es = null
-      // 延迟重连
-      setTimeout(() => {
-        connect()
-      }, 3000)
+      // 仍有引用时自动重连；定时器可被 disconnect 清理
+      if (connectCount > 0 && !reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          ensureConnected()
+        }, 3000)
+      }
     }
   }
 
+  function connect() {
+    if (typeof EventSource === 'undefined') return
+    connectCount += 1
+    ensureConnected()
+  }
+
   function disconnect() {
+    connectCount = Math.max(0, connectCount - 1)
+    if (connectCount > 0) return
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     es?.close()
     es = null
   }

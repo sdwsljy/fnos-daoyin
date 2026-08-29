@@ -25,6 +25,9 @@ export default defineEventHandler(async (event) => {
       if (!part.data?.length) continue
       if (part.name !== 'file' && part.name !== 'files' && part.name !== 'files[]') continue
       if (part.filename && !/\.js$/i.test(part.filename)) continue
+      if (part.data.length > 2 * 1024 * 1024) {
+        throw createError({ statusCode: 400, statusMessage: '音源脚本过大（上限 2MB）' })
+      }
       files.push({
         name: (part.filename || 'source.js').replace(/\.js$/i, ''),
         script: Buffer.from(part.data).toString('utf8'),

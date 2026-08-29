@@ -16,7 +16,7 @@ export type AppUpdateCheckResult = {
   latest: MiyinLatestManifest | null
 }
 
-/** 解析 semver 核心段，pre-release 仅作同版本 tie-break（略简化） */
+/** 解析 semver 核心段（major.minor.patch）；pre-release / build 后缀被忽略 */
 export function parseSemver(input: string): [number, number, number] | null {
   const m = String(input || '')
     .trim()

@@ -16,15 +16,29 @@ function msToLrcTag(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(frac).padStart(3, '0')}`
 }
 
+/** 解码 XML/HTML 实体（含 &#10; 换行、&#xHH; 十六进制） */
+function decodeXmlEntities(s: string): string {
+  return String(s || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCharCode(Number(d)))
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
 /** 从解密后的 XML / 纯文本中取出 LyricContent */
 export function extractTxLyricContent(raw: string): string {
   const s = String(raw || '').trim()
   if (!s) return ''
   const attr = s.match(/LyricContent="([\s\S]*?)"\s*\/>/)
-  if (attr?.[1]) return attr[1].replace(/\\n/g, '\n')
+  if (attr?.[1]) return decodeXmlEntities(attr[1].replace(/\\n/g, '\n'))
+  const elem = s.match(/<LyricContent[^>]*>([\s\S]*?)<\/LyricContent>/)
+  if (elem?.[1]) return decodeXmlEntities(elem[1].trim())
   const cdata = s.match(/<!\[CDATA\[([\s\S]*?)\]\]>/)
-  if (cdata?.[1]) return cdata[1].trim()
-  return s
+  if (cdata?.[1]) return decodeXmlEntities(cdata[1].trim())
+  return decodeXmlEntities(s)
 }
 
 /** QRC 行 `[ms,dur]字(0,n)…` → 标准 LRC；已是 LRC 则原样返回 */

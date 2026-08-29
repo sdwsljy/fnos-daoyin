@@ -32,7 +32,12 @@ describe('runtimeEnv', () => {
     expect(getDownloadDirEnv()).toBe('/vol1/music')
   })
 
-  it('falls back session secret when unset', () => {
-    expect(getSessionSecret().length).toBeGreaterThan(0)
+  it('returns empty session secret when unset (fail-closed)', () => {
+    expect(getSessionSecret()).toBe('')
+  })
+
+  it('reads session secret from env', () => {
+    process.env.SESSION_SECRET = 'a-random-secret'
+    expect(getSessionSecret()).toBe('a-random-secret')
   })
 })

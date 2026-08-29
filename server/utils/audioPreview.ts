@@ -77,6 +77,12 @@ export function minFullTrackBytes(expectedSec: number, qualityHint?: string | nu
 export function probeAudioDurationSeconds(filePath: string): Promise<number | null> {
   if (!existsSync(filePath)) return Promise.resolve(null)
   return new Promise((resolve) => {
+    let settled = false
+    const done = (v: number | null) => {
+      if (settled) return
+      settled = true
+      resolve(v)
+    }
     const p = spawn(
       'ffprobe',
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath],
@@ -85,19 +91,19 @@ export function probeAudioDurationSeconds(filePath: string): Promise<number | nu
     let out = ''
     const timer = setTimeout(() => {
       p.kill('SIGKILL')
-      resolve(null)
+      done(null)
     }, 30_000)
     p.stdout?.on('data', (c) => {
       out += String(c)
     })
     p.on('error', () => {
       clearTimeout(timer)
-      resolve(null)
+      done(null)
     })
     p.on('close', () => {
       clearTimeout(timer)
       const n = Number(String(out).trim())
-      resolve(Number.isFinite(n) && n > 0 ? n : null)
+      done(Number.isFinite(n) && n > 0 ? n : null)
     })
   })
 }

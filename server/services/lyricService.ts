@@ -1,5 +1,6 @@
 import { decodeKrcBase64 } from '../utils/krcDecode'
 import { decryptTxFieldToLrc } from '../utils/txQrc'
+import { assertSafePublicUrl } from '../utils/ssrfGuard'
 
 async function fetchText(
   url: string,
@@ -52,10 +53,11 @@ async function fetchJson(url: string, headers: Record<string, string> = {}, init
 
 function decodeHtmlEntities(s: string): string {
   return String(s || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
     .replace(/&apos;/g, "'")
     .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
 }
@@ -280,7 +282,9 @@ async function fetchTxQrc(musicInfo: Record<string, any>): Promise<string | null
     { Referer: 'https://y.qq.com/', 'Content-Type': 'application/json' },
     { method: 'POST', body: JSON.stringify(body) },
   )
-  if (!data || data.code !== 0 || data.req?.code !== 0) return null
+  if (!data) return null
+  if (data.code != null && data.code !== 0) return null
+  if (data.req?.code != null && data.req.code !== 0) return null
   const payload = data.req?.data || {}
   const lyric = decryptTxFieldToLrc(payload.lyric)
   const trans = decryptTxFieldToLrc(payload.trans) || decryptTxFieldToLrc(payload.roma)
@@ -333,14 +337,25 @@ async function fetchMg(musicInfo: Record<string, any>): Promise<string | null> {
   const mrcUrl = musicInfo.mrcUrl || musicInfo.mrc_url
   let lyric = ''
   if (lrcUrl) {
-    lyric = (await fetchText(String(lrcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
+    try {
+      await assertSafePublicUrl(String(lrcUrl))
+      lyric = (await fetchText(String(lrcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
+    } catch {
+      lyric = ''
+    }
   } else if (mrcUrl) {
     // mg MRC 需专用解密；无密钥时跳过，避免写入乱码
     lyric = ''
   }
-  const trans = trcUrl
-    ? (await fetchText(String(trcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
-    : ''
+  let trans = ''
+  if (trcUrl) {
+    try {
+      await assertSafePublicUrl(String(trcUrl))
+      trans = (await fetchText(String(trcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
+    } catch {
+      trans = ''
+    }
+  }
   const merged = mergeBilingualLyrics(lyric, trans)
   return merged || null
 }

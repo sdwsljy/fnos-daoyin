@@ -131,6 +131,14 @@ export function listTasks(status?: string) {
   return getDb().prepare('SELECT * FROM download_tasks ORDER BY created_at DESC LIMIT 200').all() as DownloadTaskRow[]
 }
 
+/** 列出「已完成/已存在」但本地文件已丢失的任务（供缺失文件检测） */
+export function listMissingFileTasks() {
+  const rows = getDb()
+    .prepare(`SELECT * FROM download_tasks WHERE status IN ('completed', 'existing') AND file_path IS NOT NULL`)
+    .all() as DownloadTaskRow[]
+  return rows.filter((t) => !t.file_path || !existsSync(t.file_path))
+}
+
 const AUDIO_EXTS = ['flac', 'mp3', 'm4a', 'ape', 'ogg', 'wav', 'aac']
 
 /** 按请求音质确定「已存在」应匹配的扩展名（避免已有 mp3 误判 flac 已存在） */
@@ -185,6 +193,40 @@ export function findExistingFile(opts: {
     }
   }
   return null
+}
+
+/** 检测下载目录是否已有同模板同名歌曲文件（含大小），供入队/手动匹配复用 */
+function detectExistingFile(opts: {
+  artist: string
+  title: string
+  album?: string | null
+  platform: string
+  quality: string
+  externalId?: string | null
+  musicInfo: Record<string, any>
+  downloadDir: string
+}): { path: string; size: number | null } | null {
+  const settings = getSettings()
+  const trackNo = opts.musicInfo.track || opts.musicInfo.trackNo || opts.musicInfo.tracknum || opts.musicInfo.no
+  const existingFile = findExistingFile({
+    nameTemplate: settings.nameTemplate,
+    artist: opts.artist,
+    title: opts.title,
+    album: opts.album || undefined,
+    platform: opts.platform,
+    quality: opts.quality,
+    id: opts.externalId || undefined,
+    track: trackNo,
+    downloadDir: opts.downloadDir,
+  })
+  if (!existingFile) return null
+  let size: number | null = null
+  try {
+    size = statSync(existingFile).size
+  } catch {
+    size = null
+  }
+  return { path: existingFile, size }
 }
 
 export function getTask(id: string) {
@@ -243,26 +285,18 @@ export function enqueueDownload(input: {
   }
 
   // 已存在检测：下载目录已有同模板同名歌曲文件 → 不下载，标记为 existing
-  const trackNo = input.musicInfo.track || input.musicInfo.trackNo || input.musicInfo.tracknum || input.musicInfo.no
-  const existingFile = findExistingFile({
-    nameTemplate: settings.nameTemplate,
+  const existing = detectExistingFile({
     artist: input.artist,
     title: input.title,
     album: input.album,
     platform: input.platform,
     quality: input.quality || settings.defaultQuality,
-    id: input.externalId,
-    track: trackNo,
+    externalId: input.externalId,
+    musicInfo: input.musicInfo,
     downloadDir: settings.downloadDir,
   })
-  let existingSize: number | null = null
-  if (existingFile) {
-    try {
-      existingSize = statSync(existingFile).size
-    } catch {
-      existingSize = null
-    }
-  }
+  const existingFile = existing?.path ?? null
+  const existingSize = existing?.size ?? null
 
   getDb()
     .prepare(
@@ -590,7 +624,35 @@ export function manualMatchTask(
     throw createError({ statusCode: 400, statusMessage: `没有可用音源支持平台 ${opts.platform}` })
   }
 
-  removeTaskFiles(task)
+  const quality = task.quality || settings.defaultQuality
+  // 已存在检测：目标歌曲已在下载目录 → 标记 existing，避免重复下载覆盖
+  const existing = detectExistingFile({
+    artist: opts.artist,
+    title: opts.title,
+    album: opts.album,
+    platform: opts.platform,
+    quality,
+    externalId: opts.externalId,
+    musicInfo: opts.musicInfo,
+    downloadDir: settings.downloadDir,
+  })
+
+  // 已下载成品先改名备份：新下载成功后再删，失败则恢复，避免数据丢失
+  let pendingRemove: string | null = null
+  let pendingRestore: string | null = null
+  if (!existing && task.status === 'completed' && task.file_path) {
+    const backup = `${task.file_path}.daoyin-bak-${randomUUID()}`
+    try {
+      renameSync(task.file_path, backup)
+      pendingRemove = backup
+      pendingRestore = task.file_path
+    } catch {
+      removeFileQuiet(task.file_path)
+    }
+    removeFileQuiet(task.lyric_path)
+  } else {
+    removeTaskFiles(task)
+  }
 
   let prevMusicInfo: Record<string, any> = {}
   try {
@@ -608,14 +670,18 @@ export function manualMatchTask(
       prevMusicInfo.__lyricMode === 'embedded' || prevMusicInfo.__lyricMode === 'external'
         ? prevMusicInfo.__lyricMode
         : settings.lyricMode,
+    ...(pendingRemove ? { __pendingRemove: pendingRemove } : {}),
+    ...(pendingRestore ? { __pendingRestore: pendingRestore } : {}),
   }
 
+  const status = existing ? 'existing' : 'queued'
   getDb()
     .prepare(
       `UPDATE download_tasks SET
-         title=?, artist=?, album=?, platform=?, source_id=?, quality=?, status='queued', progress=0,
-         external_id=?, match_method='manual', music_info_json=?, error=NULL,
-         file_path=NULL, lyric_path=NULL, file_size=NULL, total_bytes=NULL, attempts=0, updated_at=?
+         title=?, artist=?, album=?, platform=?, source_id=?, quality=?, status=?, progress=0,
+         external_id=?, match_method='manual', match_score=NULL, batch_id=NULL, playlist_url=NULL,
+         music_info_json=?, error=NULL,
+         file_path=?, lyric_path=NULL, file_size=?, total_bytes=NULL, attempts=0, updated_at=?
        WHERE id=?`,
     )
     .run(
@@ -624,14 +690,17 @@ export function manualMatchTask(
       opts.album || null,
       opts.platform,
       sourceId,
-      task.quality || settings.defaultQuality,
+      quality,
+      status,
       opts.externalId || null,
       JSON.stringify(musicPayload),
+      existing ? existing.path : null,
+      existing ? existing.size : null,
       nowIso(),
       id,
     )
   emitTask(id)
-  kickWorker()
+  if (!existing) kickWorker()
   return getTask(id)!
 }
 
@@ -677,10 +746,41 @@ async function downloadFile(
   opts?: { expectedDurationSec?: number | null; quality?: string | null },
 ) {
   const controller = new AbortController()
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'daoyin/1.0', Referer: 'https://www.google.com/' },
-    signal: controller.signal,
-  })
+  // 下载超时防护：60s 无数据传输或整体超过 60 分钟即中断，避免任务永久卡在进度条
+  const IDLE_TIMEOUT_MS = 60_000
+  const MAX_TIMEOUT_MS = 60 * 60_000
+  const timeoutError = (msg: string) => Object.assign(new Error(msg), { code: 'DOWNLOAD_TIMEOUT' })
+  let nodeStream: Readable | null = null
+  let timedOutError: Error | null = null
+  const triggerTimeout = (msg: string) => {
+    if (timedOutError) return
+    timedOutError = timeoutError(msg)
+    controller.abort()
+    nodeStream?.destroy(timedOutError)
+  }
+  const overallTimer = setTimeout(() => triggerTimeout('下载超时（整体超过 60 分钟），已中断'), MAX_TIMEOUT_MS)
+  let idleTimer: NodeJS.Timeout | null = null
+  const clearIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = null
+  }
+  const resetIdle = () => {
+    clearIdle()
+    idleTimer = setTimeout(() => triggerTimeout('下载超时（60 秒无数据传输），已中断'), IDLE_TIMEOUT_MS)
+  }
+  // 覆盖 fetch 建立连接 / 等待响应头阶段
+  resetIdle()
+
+  let res: Awaited<ReturnType<typeof fetch>>
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': 'daoyin/1.0', Referer: 'https://www.google.com/' },
+      signal: controller.signal,
+    })
+  } catch (err: any) {
+    if (timedOutError) throw timedOutError
+    throw err
+  }
   if (!res.ok || !res.body) {
     const err = new Error(`下载 HTTP ${res.status}`)
     ;(err as any).code = res.status >= 500 || res.status === 429 ? 'HTTP_RETRY' : 'HTTP_FATAL'
@@ -694,33 +794,13 @@ async function downloadFile(
     if (total < minBytes) throw previewSizeError(total, expected)
   }
   let received = 0
-  const nodeStream = Readable.fromWeb(res.body as any)
+  nodeStream = Readable.fromWeb(res.body as any)
+  const stream = nodeStream
   const out = createWriteStream(dest)
-  // 下载超时防护：60s 无数据传输或整体超过 60 分钟即中断，避免任务永久卡在进度条
-  const IDLE_TIMEOUT_MS = 60_000
-  const MAX_TIMEOUT_MS = 60 * 60_000
-  const timeoutError = (msg: string) => Object.assign(new Error(msg), { code: 'DOWNLOAD_TIMEOUT' })
-  let idleTimer: NodeJS.Timeout | null = null
-  const clearIdle = () => {
-    if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = null
-  }
-  const overallTimer = setTimeout(() => {
-    clearIdle()
-    controller.abort()
-    nodeStream.destroy(timeoutError('下载超时（整体超过 60 分钟），已中断'))
-  }, MAX_TIMEOUT_MS)
-  const resetIdle = () => {
-    clearIdle()
-    idleTimer = setTimeout(() => {
-      controller.abort()
-      nodeStream.destroy(timeoutError('下载超时（60 秒无数据传输），已中断'))
-    }, IDLE_TIMEOUT_MS)
-  }
   try {
-    nodeStream.on('data', (chunk: Buffer) => {
+    stream.on('data', (chunk: Buffer) => {
       if (cancelSet.has(taskId)) {
-        nodeStream.destroy(new Error('cancelled'))
+        stream.destroy(new Error('cancelled'))
         return
       }
       received += chunk.length
@@ -729,7 +809,7 @@ async function downloadFile(
       else onProgress(Math.min(0.95, received / (received + 1024 * 1024)), received, 0)
     })
     resetIdle()
-    await pipeline(nodeStream, out)
+    await pipeline(stream, out)
     onProgress(1, received, total || received)
     return { received, total: total || received }
   } catch (err) {
@@ -743,7 +823,6 @@ async function downloadFile(
   } finally {
     clearIdle()
     clearTimeout(overallTimer)
-    controller.abort()
   }
 }
 
@@ -941,6 +1020,12 @@ async function processTask(task: DownloadTaskRow) {
       throw new Error('cancelled')
     }
 
+    // 清理手动匹配前备份的旧成品
+    const pendingRemovePath = musicInfo.__pendingRemove
+    if (typeof pendingRemovePath === 'string' && pendingRemovePath && pendingRemovePath !== filePath) {
+      removeFileQuiet(pendingRemovePath)
+    }
+
     updateTask(task.id, {
       status: 'completed',
       progress: 1,
@@ -951,6 +1036,29 @@ async function processTask(task: DownloadTaskRow) {
       error: null,
     })
   } catch (err: any) {
+    // 失败/取消：恢复手动匹配前备份的旧成品，避免数据丢失
+    let pendingInfo: Record<string, any> = {}
+    try {
+      pendingInfo = JSON.parse(task.music_info_json || '{}')
+    } catch {
+      pendingInfo = {}
+    }
+    const pendingRemovePath = pendingInfo.__pendingRemove
+    const pendingRestorePath = pendingInfo.__pendingRestore
+    if (
+      typeof pendingRemovePath === 'string' &&
+      pendingRemovePath &&
+      typeof pendingRestorePath === 'string' &&
+      pendingRestorePath &&
+      existsSync(pendingRemovePath) &&
+      !existsSync(pendingRestorePath)
+    ) {
+      try {
+        renameSync(pendingRemovePath, pendingRestorePath)
+      } catch {
+        /* ignore */
+      }
+    }
     let msg = err?.message || String(err)
     if (isDownloadPermissionError(err) && !/无下载目录写入权限/.test(msg)) {
       msg = `无下载目录写入权限: ${settings.downloadDir}`
@@ -1091,6 +1199,11 @@ export async function tickWorker() {
 
 export function kickWorker() {
   void tickWorker()
+}
+
+/** 是否有任务正在处理中（供测试等待 worker 收尾） */
+export function isWorkerIdle() {
+  return running === 0
 }
 
 export function startDownloadWorker() {

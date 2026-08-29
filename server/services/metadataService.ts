@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, writeFileSync, renameSync, unlinkSync, copyFileSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, renameSync, unlinkSync, copyFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, basename, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -10,14 +10,25 @@ let ffmpegAvailable: boolean | null = null
 export function checkFfmpegAvailable(): Promise<boolean> {
   if (ffmpegAvailable != null) return Promise.resolve(ffmpegAvailable)
   return new Promise((resolve) => {
+    let settled = false
+    const done = (v: boolean) => {
+      if (settled) return
+      settled = true
+      ffmpegAvailable = v
+      resolve(v)
+    }
     const p = spawn('ffmpeg', ['-version'], { stdio: 'ignore' })
+    const timer = setTimeout(() => {
+      p.kill('SIGKILL')
+      done(false)
+    }, 5000)
     p.on('error', () => {
-      ffmpegAvailable = false
-      resolve(false)
+      clearTimeout(timer)
+      done(false)
     })
     p.on('close', (code) => {
-      ffmpegAvailable = code === 0
-      resolve(ffmpegAvailable)
+      clearTimeout(timer)
+      done(code === 0)
     })
   })
 }
@@ -40,9 +51,11 @@ function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
+    let settled = false
     // 超时兜底：元数据写入均为 `-c copy`，正常应秒级完成；超时直接终止，避免任务卡死
     const timer = setTimeout(() => {
       p.kill('SIGKILL')
+      settled = true
       reject(new Error('ffmpeg 超时（60s），已终止'))
     }, 60_000)
     p.stderr?.on('data', (c) => {
@@ -50,10 +63,14 @@ function runFfmpeg(args: string[]): Promise<void> {
     })
     p.on('error', (e) => {
       clearTimeout(timer)
+      if (settled) return
+      settled = true
       reject(e)
     })
     p.on('close', (code) => {
       clearTimeout(timer)
+      if (settled) return
+      settled = true
       if (code === 0) resolve()
       else reject(new Error(err.slice(-800) || `ffmpeg exit ${code}`))
     })
@@ -311,7 +328,6 @@ export async function writeAudioMetadata(
       }
     }
     try {
-      const { rmSync } = await import('node:fs')
       rmSync(dir, { recursive: true, force: true })
     } catch {
       /* ignore */

@@ -9,11 +9,11 @@
         </div>
         <div class="field">
           <label>URL</label>
-          <input v-model="url" type="text" placeholder="https://…" />
+          <input v-model="url" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" />
         </div>
         <div class="field">
           <label>镜像 URL（可选）</label>
-          <input v-model="mirrorUrl" type="text" placeholder="https://…" />
+          <input v-model="mirrorUrl" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" />
         </div>
         <div class="dialog-actions">
           <button class="btn-secondary" @click="emit('close')">取消</button>

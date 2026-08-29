@@ -164,16 +164,9 @@ export async function probeLoadedHandle(
   const platforms = handle.platforms
   const updateAlerts = handle.updateAlerts
 
-  if (netErrs.length) {
-    return {
-      platforms,
-      status: 'dead',
-      lastError: formatCheckUpdateFailure(netErrs[0]!.message, updateAlerts),
-    }
-  }
-
   const targets = listProbeTargets(handle)
   if (!targets.length) {
+    // 无试取链目标：checkUpdate 网络错误不足以判 dead
     return { platforms, status: 'ok', lastError: null }
   }
 
@@ -196,10 +189,12 @@ export async function probeLoadedHandle(
     attemptErrors.length > 1
       ? `（已尝试 ${attemptErrors.length} 个平台）`
       : ''
+  // checkUpdate 网络错误不再单独判 dead，仅作为取链失败时的附加提示
+  const netHint = netErrs.length ? `；${formatCheckUpdateFailure(netErrs[0]!.message, updateAlerts)}` : ''
   return {
     platforms,
     status: 'dead',
-    lastError: `${primary}${extra}`,
+    lastError: `${primary}${extra}${netHint}`,
   }
 }
 

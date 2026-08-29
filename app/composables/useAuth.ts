@@ -2,11 +2,10 @@ import { useClientSession } from './useClientSession'
 
 export function useAuth() {
   const { session, refresh } = useClientSession()
-  const loggedIn = useState<boolean>('daoyin-logged-in', () => false)
   const router = useRouter()
   const toast = useToast()
 
-  const requireLogin = computed(() => session.value?.authenticated === true)
+  const requireLogin = computed(() => session.value?.authRequired === true)
 
   async function ensureInit() {
     await refresh()
@@ -18,7 +17,6 @@ export function useAuth() {
         method: 'POST',
         body: { password },
       })
-      loggedIn.value = true
       await refresh()
       toast.success('登录成功')
       await router.push('/')
@@ -35,13 +33,11 @@ export function useAuth() {
     } catch {
       /* ignore */
     }
-    loggedIn.value = false
     await refresh()
     await router.push('/login')
   }
 
   return {
-    loggedIn,
     requireLogin,
     ensureInit,
     login,

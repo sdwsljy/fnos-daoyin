@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { writeFileSync, unlinkSync, existsSync, readFileSync } from 'node:fs'
 import { getDb } from '../utils/db'
 import { getSourceCachePath } from '../utils/paths'
+import { assertSafePublicUrl } from '../utils/ssrfGuard'
 import { allocateUniqueName, cleanSourceName, parseSourceText } from './sourceImport'
 import { probeLocalScript } from './sourceProbe'
 import type { SourceBatchHandlers, SourceProgressReporter } from '#shared/sourceBatchProgress'
@@ -65,20 +66,34 @@ function existingNameSet(): Set<string> {
 }
 
 export async function fetchSourceScript(url: string): Promise<string> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 20000)
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'daoyin/1.0' },
-    })
+  let current = String(url || '').trim()
+  for (let i = 0; i < 3; i++) {
+    await assertSafePublicUrl(current)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20000)
+    let res: Response
+    try {
+      res = await fetch(current, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'daoyin/1.0' },
+        redirect: 'manual',
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location')
+      if (!loc) break
+      current = new URL(loc, current).href
+      continue
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const text = await res.text()
     if (!text || text.length < 20) throw new Error('脚本内容过短')
+    if (text.length > 2 * 1024 * 1024) throw new Error('脚本内容过大')
     return text
-  } finally {
-    clearTimeout(timer)
   }
+  throw new Error('音源 URL 重定向次数过多')
 }
 
 async function persistSource(input: {
@@ -416,6 +431,11 @@ export async function addSourceFromScript(input: {
 
   let url = (input.url || '').trim()
   let id = (input.id || '').trim()
+  // 外部传入的 id（如导入 bundle 的 manifest）必须为安全格式，否则忽略并重新生成，
+  // 防止 id 含 ../ 等被拼进缓存路径造成路径穿越。
+  if (id && !/^[0-9a-f]{16}$/.test(id)) {
+    id = ''
+  }
 
   if (url && isHttpUrl(url)) {
     if (findSourceByUrl(url)) {
@@ -850,25 +870,33 @@ export async function checkSources(
         (async () => {
           const ts = nowIso()
           if (!row.local_path || !existsSync(row.local_path)) {
-            await reportProgress(opts?.onProgress, {
-              index,
-              total,
-              name: row.name,
-              status: 'loading',
-            })
-            await upsertSourceFromRemote({
-              name: row.name,
-              url: row.url,
-              mirrorUrl: row.mirror_url || undefined,
-              onLog: opts?.onLog,
-              logIndex: index,
-            })
-            const latest = getSource(row.id)
-            out.push({
-              id: row.id,
-              status: latest?.status || 'unknown',
-              error: latest?.last_error || undefined,
-            })
+            if (!isHttpUrl(row.url)) {
+              // 本地导入的源（local:// 等）无远端可拉取，直接标记文件缺失
+              getDb()
+                .prepare(`UPDATE sources SET status='dead', last_checked_at=?, last_error=?, updated_at=? WHERE id=?`)
+                .run(ts, '本地脚本文件缺失，无法自动恢复', ts, row.id)
+              out.push({ id: row.id, status: 'dead', error: '本地脚本文件缺失，无法自动恢复' })
+            } else {
+              await reportProgress(opts?.onProgress, {
+                index,
+                total,
+                name: row.name,
+                status: 'loading',
+              })
+              await upsertSourceFromRemote({
+                name: row.name,
+                url: row.url,
+                mirrorUrl: row.mirror_url || undefined,
+                onLog: opts?.onLog,
+                logIndex: index,
+              })
+              const latest = getSource(row.id)
+              out.push({
+                id: row.id,
+                status: latest?.status || 'unknown',
+                error: latest?.last_error || undefined,
+              })
+            }
           } else {
             await reportProgress(opts?.onProgress, {
               index,

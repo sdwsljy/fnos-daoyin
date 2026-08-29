@@ -30,7 +30,8 @@ export function getDownloadDir(override?: string) {
 }
 
 export function getSourceCachePath(id: string, dataDir?: string) {
-  return join(getDataDir(dataDir), 'sources', `${id}.js`)
+  const safe = String(id).replace(/[^a-z0-9_-]/gi, '') || 'unknown'
+  return join(getDataDir(dataDir), 'sources', `${safe}.js`)
 }
 
 export function getDbPath(dataDir?: string) {

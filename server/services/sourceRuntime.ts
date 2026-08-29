@@ -159,7 +159,7 @@ type RejectionBucket = { errors: Error[] }
 let rejectionGuardDepth = 0
 let rejectionGuardHandler: ((reason: unknown, promise: Promise<unknown>) => void) | null = null
 let rejectionGuardSaved: Array<(...args: any[]) => void> = []
-let rejectionGuardHoldTimer: NodeJS.Timeout | null = null
+const holdTimers = new Set<NodeJS.Timeout>()
 const rejectionBuckets = new Set<RejectionBucket>()
 
 function ensureRejectionGuard() {
@@ -171,7 +171,9 @@ function ensureRejectionGuard() {
   rejectionGuardHandler = (reason: unknown, promise: Promise<unknown>) => {
     if (isBenignSourceScriptError(reason)) {
       const e = reason instanceof Error ? reason : new Error(String(reason))
-      for (const b of rejectionBuckets) b.errors.push(e)
+      // 只归入最近活跃的桶，避免并发检测时跨桶污染误判音源
+      const last = [...rejectionBuckets].pop()
+      if (last) last.errors.push(e)
       const kind = isBenignSourceNetworkError(reason) ? 'network error' : 'script error'
       emitSourceLog('warn', `${kind}:`, e.message)
       // 已临时接管 unhandledRejection 监听，不再事后 catch（避免 PromiseRejectionHandledWarning）
@@ -213,10 +215,6 @@ export function acquireSourceRejectionGuard(): {
   ensureRejectionGuard()
   rejectionGuardDepth += 1
   rejectionBuckets.add(bucket)
-  if (rejectionGuardHoldTimer) {
-    clearTimeout(rejectionGuardHoldTimer)
-    rejectionGuardHoldTimer = null
-  }
   let released = false
   return {
     get errors() {
@@ -238,19 +236,18 @@ export function acquireSourceRejectionGuard(): {
 function holdSourceRejectionGuard(ms: number) {
   ensureRejectionGuard()
   rejectionGuardDepth += 1
-  if (rejectionGuardHoldTimer) clearTimeout(rejectionGuardHoldTimer)
-  rejectionGuardHoldTimer = setTimeout(() => {
-    rejectionGuardHoldTimer = null
+  // 每次 hold 用独立计时器，保证 +1 必有对应 -1，避免计数只增不减导致拦截器永久驻留
+  const t = setTimeout(() => {
+    holdTimers.delete(t)
     rejectionGuardDepth = Math.max(0, rejectionGuardDepth - 1)
     if (rejectionGuardDepth === 0) teardownRejectionGuard()
   }, ms)
+  holdTimers.add(t)
 }
 
 export function resetSourceRejectionGuardForTests() {
-  if (rejectionGuardHoldTimer) {
-    clearTimeout(rejectionGuardHoldTimer)
-    rejectionGuardHoldTimer = null
-  }
+  for (const t of holdTimers) clearTimeout(t)
+  holdTimers.clear()
   rejectionGuardDepth = 0
   rejectionBuckets.clear()
   teardownRejectionGuard()
@@ -404,8 +401,9 @@ function createRestrictedRequire(parentRequire: NodeRequire) {
     if (BLOCKED_REQUIRE.has(id) || id.startsWith('fs') || id.includes('child_process')) {
       throw new Error(`沙箱禁止 require('${id}')`)
     }
-    // 仅允许少量加密/工具库
-    if (id === 'crypto' || id === 'node:crypto' || id === 'buffer' || id === 'node:buffer' || id === 'url' || id === 'node:url') {
+    // 仅放行 crypto（脚本常用做哈希/签名）。buffer/url 已由 lx.utils 与全局 Buffer 覆盖，
+    // 不再透传宿主模块，避免其构造器链逃逸到宿主 realm。
+    if (id === 'crypto' || id === 'node:crypto') {
       return parentRequire(id)
     }
     throw new Error(`沙箱禁止 require('${id}')`)
@@ -592,6 +590,9 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
     },
   }
 
+  // 注意：node:vm 并非安全边界。任何暴露给脚本的宿主对象（含 Buffer、setTimeout、lx.utils
+  // 内函数）其 constructor 都可链回宿主 realm 并取得 process，实现任意代码执行。
+  // 这里尽量缩小暴露面（已移除 URL、收紧 require），但彻底隔离需改用 isolated-vm 或独立进程。
   const sandbox: Record<string, any> = {
     console: {
       log: (...a: any[]) => emitSourceLog('log', ...a),
@@ -606,7 +607,6 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
     setInterval: safeSetInterval,
     clearInterval: safeClear,
     Buffer,
-    URL,
     module: { exports: {} },
     exports: {},
     require: createRestrictedRequire(parentRequire),
@@ -633,10 +633,14 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
 
   // 部分音源（如花）会先请求远端配置再异步 send(inited)
   if (!didInit) {
+    let initTimer: NodeJS.Timeout | null = null
     const timedOut = await Promise.race([
       initPromise.then(() => false),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(true), INIT_WAIT_MS)),
+      new Promise<boolean>((resolve) => {
+        initTimer = setTimeout(() => resolve(true), INIT_WAIT_MS)
+      }),
     ])
+    if (initTimer) clearTimeout(initTimer)
     if (timedOut && !didInit) {
       rejectionGuard.release()
       failLoad(`音源初始化超时（${INIT_WAIT_MS}ms 内未发送 inited）`)
@@ -698,6 +702,18 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
     },
   }
 
+  // 清理同 key 或同 localPath 的旧 handle（mtime 变化 / bypassCache 重载），
+  // 避免旧 handle 的 setInterval 等定时器成为孤儿泄漏。
+  for (const [k, entry] of handleCache) {
+    if (k === key || k.startsWith(`${localPath}:`)) {
+      try {
+        entry.handle.dispose()
+      } catch {
+        /* ignore */
+      }
+      handleCache.delete(k)
+    }
+  }
   handleCache.set(key, { handle, mtimeMs: st.mtimeMs, loadedAt: Date.now() })
   // 覆盖脚本初始化后 fire-and-forget 的 checkUpdate
   holdSourceRejectionGuard(Number(process.env.MIYIN_SOURCE_UPDATE_GRACE_MS || 2500))

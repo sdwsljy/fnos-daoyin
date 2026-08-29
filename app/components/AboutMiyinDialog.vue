@@ -9,9 +9,7 @@
         </p>
         <p class="dim">支持 wy / kw / kg / tx 平台搜索，wy / tx / kg 歌单导入。</p>
         <div class="dialog-actions">
-          <a v-if="repoUrl" :href="repoUrl" target="_blank">
-            <button class="btn-secondary">项目主页</button>
-          </a>
+          <a v-if="repoUrl" :href="repoUrl" target="_blank" rel="noopener noreferrer" class="btn-secondary">项目主页</a>
           <button @click="emit('close')">关闭</button>
         </div>
       </div>

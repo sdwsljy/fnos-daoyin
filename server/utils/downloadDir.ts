@@ -32,8 +32,7 @@ export function ensureDownloadDirWritable(dir: string): string {
       `.daoyin-write-probe-${process.pid}-${randomBytes(4).toString('hex')}`,
     )
     writeFileSync(probe, 'ok', { flag: 'w' })
-    unlinkSync(probe)
-    probe = null
+    // 写入成功即视为可写
   } catch (err: any) {
     if (probe) {
       try {
@@ -50,6 +49,14 @@ export function ensureDownloadDirWritable(dir: string): string {
     const e = new Error(formatDownloadPermissionMessage(resolved))
     ;(e as any).code = DOWNLOAD_DIR_PERM_CODE
     throw e
+  }
+  // 清理探针文件；删除失败（占用/杀软）不影响「可写」判定
+  if (probe) {
+    try {
+      unlinkSync(probe)
+    } catch {
+      /* ignore */
+    }
   }
   return resolved
 }

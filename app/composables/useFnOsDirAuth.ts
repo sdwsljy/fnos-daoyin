@@ -176,13 +176,15 @@ export function useFnOsDirAuth() {
       if (opts?.notifyError) notifyAuthReason(toast, status.value.reason)
       return status.value
     } catch (e: unknown) {
+      // 网络抖动时保留上次状态，避免 fail-open 误判「已授权」而隐藏授权横幅
+      const prev = status.value
       status.value = {
-        supported: false,
-        downloadDir: '',
-        downloadMode: 'default',
-        paths: [],
-        authorized: true,
-        needsAuth: false,
+        supported: prev?.supported ?? false,
+        downloadDir: prev?.downloadDir ?? '',
+        downloadMode: prev?.downloadMode ?? 'default',
+        paths: prev?.paths ?? [],
+        authorized: prev?.authorized ?? false,
+        needsAuth: prev?.needsAuth ?? false,
         reason: 'fetch-failed',
       }
       if (opts?.notifyError) toast.error(apiErrorMessage(e, '获取飞牛授权状态失败'))

@@ -25,7 +25,7 @@ export const SEARCH_PLATFORM_ORDER: PlatformId[] = ['wy', 'kw', 'kg', 'tx']
 export const PLAYLIST_PLATFORM_ORDER: PlatformId[] = ['wy', 'tx', 'kg']
 
 export function isPlatformId(v: string): v is PlatformId {
-  return v in PLATFORM_DISPLAY
+  return Object.hasOwn(PLATFORM_DISPLAY, v)
 }
 
 export function platformLabel(id: string): string {

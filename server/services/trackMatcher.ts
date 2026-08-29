@@ -33,7 +33,7 @@ function norm(s: string) {
 /** 把歌手字符串拆成独立歌手集合（处理 /、& 和 等分隔） */
 function splitArtists(raw: string): string[] {
   return String(raw || '')
-    .split(/[\/、,&和&feat.]+/i)
+    .split(/(?:feat\.|ft\.|[\/、,&和])+/i)
     .map((a) => norm(a))
     .filter((a) => a && a !== '未知')
 }

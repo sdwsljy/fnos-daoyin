@@ -58,6 +58,7 @@ export function openDb(dataDir?: string) {
   mkdirSync(dirname(path), { recursive: true })
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
+  db.pragma('busy_timeout = 5000')
   db.exec(SCHEMA)
   migrateSchema(db)
   return db

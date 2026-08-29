@@ -1,8 +1,4 @@
-import { formatSourceProgressText, SOURCE_PROGRESS_PHASE_LABEL } from '#shared/sourceBatchProgress'
-
-export function sourcePhaseLabel(status: string) {
-  return SOURCE_PROGRESS_PHASE_LABEL[status as keyof typeof SOURCE_PROGRESS_PHASE_LABEL] || status
-}
+import { formatSourceProgressText } from '#shared/sourceBatchProgress'
 
 export function progressText(input: { index: number; total: number; name: string; status: string }) {
   return formatSourceProgressText({

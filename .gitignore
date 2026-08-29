@@ -5,7 +5,7 @@ node_modules/
 dist/
 coverage/
 data/
-downloads/
+/downloads/
 *.log
 .DS_Store
 .env

@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto'
+import { createHmac, createHash, timingSafeEqual, randomUUID } from 'node:crypto'
 
 /** 会话默认 7 天（与 Cookie maxAge 对齐） */
 export const SESSION_MAX_AGE_SEC = 7 * 24 * 60 * 60
@@ -17,8 +17,8 @@ export function verifySession(token: string | undefined, secret: string): { exp:
   if (!payload || !sig) return null
   const expected = createHmac('sha256', secret).update(payload).digest('base64url')
   try {
-    const a = Buffer.from(sig)
-    const b = Buffer.from(expected)
+    const a = Buffer.from(sig, 'base64url')
+    const b = Buffer.from(expected, 'base64url')
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null
   } catch {
     return null
@@ -33,8 +33,8 @@ export function verifySession(token: string | undefined, secret: string): { exp:
 }
 
 export function safeEqualString(a: string, b: string) {
-  const ba = Buffer.from(a)
-  const bb = Buffer.from(b)
-  if (ba.length !== bb.length) return false
-  return timingSafeEqual(ba, bb)
+  // 先哈希再常量时间比较：避免长度不等提前返回泄露长度
+  const ha = createHash('sha256').update(String(a)).digest()
+  const hb = createHash('sha256').update(String(b)).digest()
+  return timingSafeEqual(ha, hb)
 }
