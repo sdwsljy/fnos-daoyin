@@ -10,7 +10,8 @@ OUT="${2:-release_notes.md}"
   echo ""
   echo "## 更新内容"
   if [ -f CHANGELOG.md ]; then
-    head -n 30 CHANGELOG.md
+    # 跳过 CHANGELOG 首行「# 更新日志」，避免与「## 更新内容」标题重复
+    tail -n +2 CHANGELOG.md | head -n 30
   else
     echo "- 首个版本"
   fi
