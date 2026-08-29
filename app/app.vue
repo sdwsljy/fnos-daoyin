@@ -4,7 +4,6 @@
     <main class="app-main">
       <NuxtPage />
     </main>
-    <AppBottomNav />
     <AppToast />
     <PageLoading />
   </div>

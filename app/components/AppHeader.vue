@@ -8,6 +8,7 @@
       <nav class="header-nav">
         <NuxtLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-link">
           {{ item.label }}
+          <span v-if="item.to === '/queue' && badge > 0" class="queue-badge">{{ badge }}</span>
         </NuxtLink>
       </nav>
       <div class="header-actions">
@@ -22,9 +23,11 @@
 import { navItems } from '~/utils/nav'
 import { useAuth } from '~/composables/useAuth'
 import { useAppUpdate } from '~/composables/useAppUpdate'
+import { useDownloadBadge } from '~/composables/useDownloadBadge'
 
 const { requireLogin, logout } = useAuth()
 const { update } = useAppUpdate()
+const badge = useDownloadBadge()
 </script>
 
 <style scoped>
@@ -72,11 +75,27 @@ const { update } = useAppUpdate()
 }
 
 .nav-link {
+  position: relative;
   padding: 7px 14px;
   border-radius: var(--radius);
   color: var(--color-text-dim);
   font-weight: 500;
   transition: color 0.15s ease, background 0.15s ease;
+}
+
+.queue-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--color-danger);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
 }
 
 .nav-link:hover {
