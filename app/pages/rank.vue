@@ -12,6 +12,7 @@
       >
         {{ p.label }}
       </button>
+      <button class="btn-secondary" @click="refreshBoards">刷新榜单</button>
     </div>
 
     <div v-if="loadingBoards" class="hint">加载榜单中…</div>
@@ -27,6 +28,7 @@
       <div class="board-head">
         <button class="btn-secondary" @click="board = null">返回榜单</button>
         <h3>{{ board.name }}</h3>
+        <button class="btn-secondary" @click="refreshTracks">刷新</button>
       </div>
 
       <div class="download-opts card">
@@ -122,14 +124,14 @@ async function loadDefaults() {
   }
 }
 
-async function loadBoards() {
+async function loadBoards(refresh = false) {
   loadingBoards.value = true
   board.value = null
   tracks.value = []
   try {
     const data = await $fetch<{ items: RankBoard[] }>('/api/rank/boards', {
       method: 'POST',
-      body: { platform: platform.value },
+      body: { platform: platform.value, refresh },
     })
     boards.value = data.items || []
   } catch (e: any) {
@@ -138,6 +140,10 @@ async function loadBoards() {
   } finally {
     loadingBoards.value = false
   }
+}
+
+function refreshBoards() {
+  loadBoards(true)
 }
 
 function switchPlatform(id: string) {
@@ -153,21 +159,27 @@ async function selectBoard(b: RankBoard) {
   await loadTracks()
 }
 
-async function loadTracks() {
+async function loadTracks(refresh = false) {
   if (!board.value) return
   loadingTracks.value = true
   try {
     const data = await $fetch<{ items: RankTrack[]; hasMore: boolean }>('/api/rank/tracks', {
       method: 'POST',
-      body: { platform: platform.value, boardId: board.value.id, page: page.value },
+      body: { platform: platform.value, boardId: board.value.id, page: page.value, refresh },
     })
-    tracks.value = tracks.value.concat(data.items || [])
+    if (refresh) tracks.value = data.items || []
+    else tracks.value = tracks.value.concat(data.items || [])
     hasMore.value = data.hasMore
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '歌曲加载失败')
   } finally {
     loadingTracks.value = false
   }
+}
+
+async function refreshTracks() {
+  page.value = 1
+  await loadTracks(true)
 }
 
 async function loadMore() {

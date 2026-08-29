@@ -242,22 +242,68 @@ async function getKgTracks(boardId: string, page: number): Promise<{ items: Rank
   return { items, hasMore: list.length >= PAGE_SIZE }
 }
 
+/* ---------------- 缓存 ---------------- */
+
+const RANK_TTL_MS = 10 * 60 * 1000
+const RANK_CACHE_MAX = 200
+const rankCache = new Map<string, { at: number; value: any }>()
+
+function getCached<T>(key: string): T | undefined {
+  const hit = rankCache.get(key)
+  if (!hit) return undefined
+  if (Date.now() - hit.at < RANK_TTL_MS) {
+    // 命中：移到末尾（LRU）
+    rankCache.delete(key)
+    rankCache.set(key, hit)
+    return hit.value
+  }
+  rankCache.delete(key)
+  return undefined
+}
+
+function setCached(key: string, value: unknown) {
+  rankCache.set(key, { at: Date.now(), value })
+  if (rankCache.size > RANK_CACHE_MAX) {
+    const oldest = rankCache.keys().next().value
+    if (oldest) rankCache.delete(oldest)
+  }
+}
+
+export function clearRankCache() {
+  rankCache.clear()
+}
+
 /* ---------------- 对外 ---------------- */
 
-export async function listRankBoards(platform: string): Promise<RankBoard[]> {
-  if (platform === 'wy') return listWyBoards()
-  if (platform === 'tx') return listTxBoards()
-  if (platform === 'kg') return listKgBoards()
-  throw createError({ statusCode: 400, statusMessage: `暂不支持排行榜平台: ${platform}` })
+export async function listRankBoards(platform: string, refresh = false): Promise<RankBoard[]> {
+  const key = `boards:${platform}`
+  if (refresh) rankCache.delete(key)
+  const cached = getCached<RankBoard[]>(key)
+  if (cached) return cached
+  let boards: RankBoard[]
+  if (platform === 'wy') boards = await listWyBoards()
+  else if (platform === 'tx') boards = await listTxBoards()
+  else if (platform === 'kg') boards = await listKgBoards()
+  else throw createError({ statusCode: 400, statusMessage: `暂不支持排行榜平台: ${platform}` })
+  setCached(key, boards)
+  return boards
 }
 
 export async function getRankTracks(
   platform: string,
   boardId: string,
   page = 1,
+  refresh = false,
 ): Promise<{ items: RankTrack[]; hasMore: boolean }> {
-  if (platform === 'wy') return getWyTracks(boardId, page)
-  if (platform === 'tx') return getTxTracks(boardId, page)
-  if (platform === 'kg') return getKgTracks(boardId, page)
-  throw createError({ statusCode: 400, statusMessage: `暂不支持排行榜平台: ${platform}` })
+  const key = `tracks:${platform}:${boardId}:${page}`
+  if (refresh) rankCache.delete(key)
+  const cached = getCached<{ items: RankTrack[]; hasMore: boolean }>(key)
+  if (cached) return cached
+  let result: { items: RankTrack[]; hasMore: boolean }
+  if (platform === 'wy') result = await getWyTracks(boardId, page)
+  else if (platform === 'tx') result = await getTxTracks(boardId, page)
+  else if (platform === 'kg') result = await getKgTracks(boardId, page)
+  else throw createError({ statusCode: 400, statusMessage: `暂不支持排行榜平台: ${platform}` })
+  setCached(key, result)
+  return result
 }
