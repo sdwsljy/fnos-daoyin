@@ -520,6 +520,22 @@ export async function parsePlaylist(url: string): Promise<PlaylistDraft> {
   })
 }
 
+function playlistUrlOf(platform: string, id: string): string {
+  if (platform === 'wy') return `https://music.163.com/playlist?id=${id}`
+  if (platform === 'tx') return `https://y.qq.com/n/ryqq/playlist/${id}`
+  if (platform === 'kg') return `https://www.kugou.com/yy/special/single/${id}.html`
+  return `${platform}:${id}`
+}
+
+/** 按平台 + 歌单 id 解析（供歌单广场使用） */
+export async function parsePlaylistById(platform: string, id: string): Promise<PlaylistDraft> {
+  const url = playlistUrlOf(platform, id)
+  if (platform === 'wy') return parseNeteasePlaylist(id, url)
+  if (platform === 'tx') return parseQqPlaylist(id, url)
+  if (platform === 'kg') return parseKugouPlaylist(id, url)
+  throw createError({ statusCode: 400, statusMessage: `暂不支持该平台歌单: ${platform}` })
+}
+
 async function parseNeteasePlaylist(id: string, url: string): Promise<PlaylistDraft> {
   // 移动端头 + n 放大；完整曲目 ID 在 trackIds，tracks 往往只有预览几首
   const api = `https://music.163.com/api/v6/playlist/detail?id=${id}&n=100000&s=0`
