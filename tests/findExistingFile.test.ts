@@ -95,4 +95,15 @@ describe('findExistingFile', () => {
     })
     expect(hit).toBe(join(dir, '周杰伦 - 晴天.mp3'))
   })
+
+  it('does NOT treat same title with different artist as existing', () => {
+    writeFileSync(join(dir, '晴天 - 林俊杰.flac'), 'x')
+    const hit = findExistingFile({
+      nameTemplate: '{title} - {artist}',
+      artist: '周杰伦',
+      title: '晴天',
+      downloadDir: dir,
+    })
+    expect(hit).toBeNull()
+  })
 })

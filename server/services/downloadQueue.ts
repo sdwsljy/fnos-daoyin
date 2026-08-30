@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
-import { join, basename } from 'node:path'
+import { join, basename, dirname, extname, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { getDb } from '../utils/db'
 import { getDownloadDir, resolveDownloadDir } from '../utils/paths'
@@ -38,6 +38,7 @@ import {
 } from '../utils/audioPreview'
 import { nextStatusAfterFailure, isRetryableError } from './downloadState'
 import { msUntilCanStartTask } from '../utils/downloadIntervals'
+import { parseFilename } from '../utils/filenameParse'
 
 export type { TaskStatus } from './downloadState'
 export { nextStatusAfterFailure, isRetryableError } from './downloadState'
@@ -64,6 +65,7 @@ export type DownloadTaskRow = {
   music_info_json: string | null
   file_size: number | null
   total_bytes: number | null
+  file_missing: number
   created_at: string
   updated_at: string
 }
@@ -139,7 +141,494 @@ export function listMissingFileTasks() {
   return rows.filter((t) => !t.file_path || !existsSync(t.file_path))
 }
 
+export type DownloadStats = {
+  files: number
+  missing: number
+  records: {
+    total: number
+    completed: number
+    existing: number
+    running: number
+    queued: number
+    failed: number
+    cancelled: number
+  }
+}
+
+/**
+ * 统计下载状态。主指标「files」为磁盘上真实存在的去重音频文件数（completed/existing 记录
+ * 的 file_path 去重后 existsSync 为真），与「记录条数」区分，避免重复引用/外部删除造成虚高。
+ */
+export function computeDownloadStats(): DownloadStats {
+  const rows = listTasks()
+  const records: DownloadStats['records'] = {
+    total: rows.length,
+    completed: 0,
+    existing: 0,
+    running: 0,
+    queued: 0,
+    failed: 0,
+    cancelled: 0,
+  }
+  const seen = new Set<string>()
+  let files = 0
+  let missing = 0
+  for (const t of rows) {
+    switch (t.status) {
+      case 'completed':
+        records.completed += 1
+        break
+      case 'existing':
+        records.existing += 1
+        break
+      case 'running':
+        records.running += 1
+        break
+      case 'queued':
+        records.queued += 1
+        break
+      case 'failed':
+        records.failed += 1
+        break
+      case 'cancelled':
+        records.cancelled += 1
+        break
+    }
+    if (t.status !== 'completed' && t.status !== 'existing') continue
+    if (!t.file_path) continue
+    if (!existsSync(t.file_path)) {
+      missing += 1
+      continue
+    }
+    if (!seen.has(t.file_path)) {
+      seen.add(t.file_path)
+      files += 1
+    }
+  }
+  return { files, missing, records }
+}
+
+/**
+ * 自愈：将 completed/existing 记录按本地文件是否仍存在标记 file_missing。
+ * 文件在软件之外被删除后，这里会持续把失效记录标出来，供统计与清理使用。
+ * 返回最新统计。
+ */
+export function reconcileDownloadState(): DownloadStats {
+  const db = getDb()
+  const rows = db
+    .prepare(
+      `SELECT id, file_path FROM download_tasks WHERE status IN ('completed','existing') AND file_path IS NOT NULL`,
+    )
+    .all() as Array<{ id: string; file_path: string }>
+  const update = db.prepare(`UPDATE download_tasks SET file_missing=? WHERE id=?`)
+  const tx = db.transaction((items: Array<{ id: string; missing: number }>) => {
+    for (const it of items) update.run(it.missing, it.id)
+  })
+  tx(rows.map((r) => ({ id: r.id, missing: existsSync(r.file_path) ? 0 : 1 })))
+  return computeDownloadStats()
+}
+
+/** 清理文件已丢失的 completed/existing 记录（不删文件，因其本就不存在） */
+export function deleteMissingFileRecords(): number {
+  const info = getDb().prepare(`DELETE FROM download_tasks WHERE file_missing = 1`).run()
+  return info.changes
+}
+
 const AUDIO_EXTS = ['flac', 'mp3', 'm4a', 'ape', 'ogg', 'wav', 'aac']
+
+export type MissingFileReason = 'dir_missing' | 'ext_changed' | 'backup_left' | 'file_deleted'
+
+/** 判定一条 file_path 已失效的记录属于哪种缺失类型 */
+export function classifyMissingFile(filePath: string): MissingFileReason {
+  const dir = dirname(filePath)
+  if (!existsSync(dir)) return 'dir_missing'
+  const ext = extname(filePath).replace(/^\./, '').toLowerCase()
+  const stem = basename(filePath, extname(filePath))
+  let entries: string[] = []
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return 'file_deleted'
+  }
+  const wantedExts = AUDIO_EXTS.filter((e) => e !== ext)
+  for (const entry of entries) {
+    if (wantedExts.some((e) => entry.toLowerCase() === `${stem}.${e}`)) {
+      return 'ext_changed'
+    }
+  }
+  const bakPrefix = `${basename(filePath)}.daoyin-bak-`
+  if (entries.some((e) => e.startsWith(bakPrefix))) {
+    return 'backup_left'
+  }
+  return 'file_deleted'
+}
+
+/** 缺失文件清单（含缺失类型判定），供前端展示与一键清理 */
+export function listMissingFileTasksDetailed() {
+  return listMissingFileTasks().map((t) => ({
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    platform: t.platform,
+    quality: t.quality,
+    status: t.status,
+    file_path: t.file_path,
+    reason: t.file_path ? classifyMissingFile(t.file_path) : ('file_deleted' as MissingFileReason),
+  }))
+}
+
+export type LocalAudioFile = {
+  name: string
+  path: string
+  size: number
+  mtime: number
+}
+
+/** 扫描下载目录（非递归），返回音频文件清单，忽略歌词/临时/备份文件 */
+export function scanDownloadDir(downloadDir?: string): LocalAudioFile[] {
+  const dir = resolveDownloadDir(downloadDir)
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return []
+  }
+  const exts = new Set(AUDIO_EXTS)
+  const out: LocalAudioFile[] = []
+  for (const entry of entries) {
+    const lower = entry.toLowerCase()
+    if (lower.endsWith('.lrc')) continue
+    if (lower.includes('.daoyin-bak-')) continue
+    if (lower.includes('.daoyin-write-probe-')) continue
+    const ext = extname(entry).replace(/^\./, '').toLowerCase()
+    if (!exts.has(ext)) continue
+    const full = join(dir, entry)
+    try {
+      const st = statSync(full)
+      if (!st.isFile()) continue
+      out.push({ name: entry, path: full, size: st.size, mtime: st.mtimeMs })
+    } catch {
+      /* ignore */
+    }
+  }
+  return out
+}
+
+export type ExistingCheckItem = {
+  title: string
+  artist: string
+  album?: string | null
+  platform?: string
+  quality?: string | null
+}
+
+export type ExistingCheckResult = {
+  title: string
+  artist: string
+  state: 'exists' | 'multi_version' | 'none'
+  path: string | null
+  size: number | null
+  versions: Array<{ name: string; path: string; size: number }>
+}
+
+/**
+ * 批量检测本地是否已存在同名歌曲（下载前预检）。
+ * 三态：exists（同歌同歌手）/ multi_version（同歌名不同歌手，列出已有版本）/ none（无）。
+ * 不限音质/格式。
+ */
+export function checkExistingLocal(items: ExistingCheckItem[]): { results: ExistingCheckResult[] } {
+  const settings = getSettings()
+  const files = scanDownloadDir(settings.downloadDir)
+  const results = items.map((item) => {
+    const base = applyNameTemplate(settings.nameTemplate, {
+      artist: item.artist,
+      title: item.title,
+      album: item.album || undefined,
+      platform: item.platform,
+      quality: item.quality || undefined,
+    })
+    const titleBase = sanitizeFilename(item.title)
+    const exts = AUDIO_EXTS
+    let exact: LocalAudioFile | null = null
+    const multiVersions: LocalAudioFile[] = []
+    for (const f of files) {
+      const ext = extname(f.name).replace(/^\./, '').toLowerCase()
+      if (!exts.includes(ext)) continue
+      if (f.name === `${base}.${ext}`) {
+        exact = f
+        break
+      }
+    }
+    if (!exact) {
+      for (const f of files) {
+        const ext = extname(f.name).replace(/^\./, '').toLowerCase()
+        if (!exts.includes(ext)) continue
+        if (!matchesTitlePrefix(f.name, titleBase, exts)) continue
+        const cls = classifyExistingMatch(item.title, item.artist, f.name)
+        if (cls === 'exists') {
+          exact = f
+          break
+        }
+        if (cls === 'multi_version') multiVersions.push(f)
+      }
+    }
+    if (exact) {
+      return {
+        title: item.title,
+        artist: item.artist,
+        state: 'exists',
+        path: exact.path,
+        size: exact.size,
+        versions: [],
+      }
+    }
+    if (multiVersions.length) {
+      return {
+        title: item.title,
+        artist: item.artist,
+        state: 'multi_version',
+        path: null,
+        size: null,
+        versions: multiVersions.map((f) => ({ name: f.name, path: f.path, size: f.size })),
+      }
+    }
+    return {
+      title: item.title,
+      artist: item.artist,
+      state: 'none',
+      path: null,
+      size: null,
+      versions: [],
+    }
+  })
+  return { results }
+}
+
+export type ReconcileMissing = {
+  id: string
+  title: string
+  artist: string
+  platform: string
+  quality: string | null
+  status: string
+  file_path: string | null
+  reason: MissingFileReason
+}
+
+export type ReconcileRenamed = ReconcileMissing & {
+  matchedFile: LocalAudioFile
+}
+
+export type ReconcileShared = {
+  path: string
+  size: number
+  records: Array<{ id: string; title: string; artist: string; status: string; quality: string | null }>
+}
+
+export type ReconcileResult = {
+  totalRecords: number
+  totalFiles: number
+  matched: number
+  missing: ReconcileMissing[]
+  shared: ReconcileShared[]
+  renamed: ReconcileRenamed[]
+  orphans: LocalAudioFile[]
+}
+
+function trackNoOfTask(t: DownloadTaskRow): string | number | undefined {
+  try {
+    const mi = JSON.parse(t.music_info_json || '{}')
+    return mi.track || mi.trackNo || mi.tracknum || mi.no
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 双向对账：磁盘音频文件 vs 已完成/已存在记录。
+ * - matched：记录 file_path 命中磁盘文件（记录条数，可能 > 文件数）
+ * - totalFiles：去重后的磁盘文件数（被记录引用且存在）
+ * - missing：记录 file_path 失效（按原因分类）
+ * - shared：同一文件被多条记录引用（「已存在」重复引用，造成记录数虚高）
+ * - renamed：记录 file_path 失效，但在磁盘上找到同名文件（疑似改名/换后缀/迁移）
+ * - orphans：磁盘上存在但无任何记录对应的文件
+ */
+export function diffLocalFiles(downloadDir?: string): ReconcileResult {
+  const settings = getSettings()
+  const files = scanDownloadDir(downloadDir || settings.downloadDir)
+  const filePaths = new Set(files.map((f) => f.path))
+  const rows = listTasks().filter((t) => t.status === 'completed' || t.status === 'existing')
+  const totalRecords = rows.length
+
+  const recordPaths = new Set<string>()
+  const missingRows: DownloadTaskRow[] = []
+  const validByPath = new Map<string, DownloadTaskRow[]>()
+  for (const t of rows) {
+    if (!t.file_path) continue
+    recordPaths.add(t.file_path)
+    if (filePaths.has(t.file_path)) {
+      const arr = validByPath.get(t.file_path) || []
+      arr.push(t)
+      validByPath.set(t.file_path, arr)
+    } else {
+      missingRows.push(t)
+    }
+  }
+
+  const matched = [...validByPath.values()].reduce((n, a) => n + a.length, 0)
+  const totalFiles = validByPath.size
+
+  // 共享文件：同一 file_path 被多条记录引用
+  const shared: ReconcileShared[] = []
+  for (const [path, recs] of validByPath) {
+    if (recs.length <= 1) continue
+    let size = 0
+    try {
+      size = statSync(path).size
+    } catch {
+      size = 0
+    }
+    shared.push({
+      path,
+      size,
+      records: recs.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        status: t.status,
+        quality: t.quality,
+      })),
+    })
+  }
+
+  const orphanCandidates = files.filter((f) => !recordPaths.has(f.path))
+
+  // 改名/迁移关联：用命名模板反推期望文件名，在孤儿文件里找同名
+  const renamed: ReconcileRenamed[] = []
+  const usedOrphans = new Set<string>()
+  const remainingMissing: DownloadTaskRow[] = []
+  for (const t of missingRows) {
+    const expectedBase = applyNameTemplate(settings.nameTemplate, {
+      artist: t.artist,
+      title: t.title,
+      album: t.album || undefined,
+      platform: t.platform,
+      quality: t.quality || undefined,
+      id: t.external_id || undefined,
+      track: trackNoOfTask(t),
+    })
+    const hit = orphanCandidates.find((f) => {
+      if (usedOrphans.has(f.path)) return false
+      const ext = extname(f.name).replace(/^\./, '').toLowerCase()
+      const stem = f.name.slice(0, -(ext.length + 1))
+      return stem === expectedBase || stem.startsWith(`${expectedBase} -`)
+    })
+    if (hit) {
+      usedOrphans.add(hit.path)
+      renamed.push({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        platform: t.platform,
+        quality: t.quality,
+        status: t.status,
+        file_path: t.file_path,
+        reason: classifyMissingFile(t.file_path || ''),
+        matchedFile: hit,
+      })
+    } else {
+      remainingMissing.push(t)
+    }
+  }
+
+  const missing: ReconcileMissing[] = remainingMissing.map((t) => ({
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    platform: t.platform,
+    quality: t.quality,
+    status: t.status,
+    file_path: t.file_path,
+    reason: t.file_path ? classifyMissingFile(t.file_path) : 'file_deleted',
+  }))
+
+  const orphans = orphanCandidates.filter((f) => !usedOrphans.has(f.path))
+
+  return { totalRecords, totalFiles, matched, missing, shared, renamed, orphans }
+}
+
+/** 清理共享文件的重复记录：每个文件保留 1 条（completed 优先，否则最早），删除其余记录（不删文件） */
+export function dedupeSharedRecords(): { deleted: number; files: number } {
+  const files = scanDownloadDir(getSettings().downloadDir)
+  const filePaths = new Set(files.map((f) => f.path))
+  const rows = listTasks().filter((t) => t.status === 'completed' || t.status === 'existing')
+  const validByPath = new Map<string, DownloadTaskRow[]>()
+  for (const t of rows) {
+    if (!t.file_path) continue
+    if (!filePaths.has(t.file_path)) continue
+    const arr = validByPath.get(t.file_path) || []
+    arr.push(t)
+    validByPath.set(t.file_path, arr)
+  }
+  const deleteIds: string[] = []
+  for (const recs of validByPath.values()) {
+    if (recs.length <= 1) continue
+    const sorted = [...recs].sort((a, b) => {
+      const sa = a.status === 'completed' ? 0 : 1
+      const sb = b.status === 'completed' ? 0 : 1
+      if (sa !== sb) return sa - sb
+      return a.created_at.localeCompare(b.created_at)
+    })
+    for (let i = 1; i < sorted.length; i++) deleteIds.push(sorted[i].id)
+  }
+  const del = getDb().prepare(`DELETE FROM download_tasks WHERE id = ?`)
+  const tx = getDb().transaction((ids: string[]) => {
+    for (const id of ids) del.run(id)
+  })
+  tx(deleteIds)
+  return { deleted: deleteIds.length, files: validByPath.size }
+}
+
+/** 校验路径位于下载目录内，返回规范化绝对路径（防路径穿越） */
+function assertSafeDownloadFile(p: string, downloadDir?: string): string {
+  const dir = resolveDownloadDir(downloadDir)
+  const full = resolve(p)
+  const rel = full.slice(dir.length)
+  if (full !== dir && (!rel.startsWith(sep) || rel.includes(`..${sep}`))) {
+    throw createError({ statusCode: 400, statusMessage: '路径不在下载目录内' })
+  }
+  return full
+}
+
+/** 重新关联：把记录 file_path 更新为匹配到的本地文件路径 */
+export function relinkTaskFile(id: string, newPath: string, downloadDir?: string) {
+  const task = getTask(id)
+  if (!task) throw createError({ statusCode: 404, statusMessage: '任务不存在' })
+  const full = assertSafeDownloadFile(newPath, downloadDir || getSettings().downloadDir)
+  if (!existsSync(full)) {
+    throw createError({ statusCode: 400, statusMessage: '目标文件不存在' })
+  }
+  let size: number | null = null
+  try {
+    size = statSync(full).size
+  } catch {
+    size = null
+  }
+  updateTask(id, { file_path: full, file_size: size, file_missing: 0 })
+  return getTask(id)!
+}
+
+/** 删除孤儿文件（仅限下载目录内、且无记录引用的音频文件） */
+export function deleteOrphanFile(path: string, downloadDir?: string) {
+  const full = assertSafeDownloadFile(path, downloadDir || getSettings().downloadDir)
+  const rows = listTasks().filter((t) => t.file_path === full)
+  if (rows.length) {
+    throw createError({ statusCode: 400, statusMessage: '该文件仍被下载记录引用，不能删除' })
+  }
+  if (!existsSync(full)) return { ok: true, path: full }
+  unlinkSync(full)
+  return { ok: true, path: full }
+}
 
 /** 按请求音质确定「已存在」应匹配的扩展名（避免已有 mp3 误判 flac 已存在） */
 function extsForQuality(quality?: string | null): string[] {
@@ -156,6 +645,43 @@ function extsForQuality(quality?: string | null): string[] {
  * 只要歌名一致即视为已存在，避免重复下载。
  * 返回已存在文件的绝对路径；无则 null。
  */
+/** 文本规范化：小写、去空格、去括号内容（用于歌手/歌名严格对比） */
+function normText(s: string) {
+  return (s || '').toLowerCase().replace(/\s+/g, '').replace(/[（(].*?[）)]/g, '')
+}
+
+function titleEquals(a: string, b: string) {
+  const na = normText(a)
+  const nb = normText(b)
+  return !!na && na === nb
+}
+
+/**
+ * 判断本地文件名相对目标歌曲的存在状态：
+ * - exists：歌名一致且歌手完全一致（同版本）
+ * - multi_version：歌名一致但歌手不同（同名不同歌手）
+ * - none：歌名不一致
+ */
+export function classifyExistingMatch(
+  title: string,
+  artist: string,
+  fileName: string,
+): 'exists' | 'multi_version' | 'none' {
+  const parsed = parseFilename(fileName)
+  if (!normText(title)) return 'none'
+  const cands = [{ title: parsed.title, artist: parsed.artist }]
+  if (parsed.swapped) cands.push({ title: parsed.swapped.title, artist: parsed.swapped.artist })
+  for (const v of cands) {
+    if (!titleEquals(v.title, title)) continue
+    const fileArtist = normText(v.artist)
+    const wantArtist = normText(artist)
+    // 任一歌手信息缺失：无法判断是否不同版本，保守视为同版本（避免误判重复下载）
+    if (!fileArtist || !wantArtist) return 'exists'
+    return fileArtist === wantArtist ? 'exists' : 'multi_version'
+  }
+  return 'none'
+}
+
 export function findExistingFile(opts: {
   nameTemplate: string
   artist: string
@@ -197,8 +723,9 @@ export function findExistingFile(opts: {
       }
       continue
     }
-    // 只按歌名宽松匹配：忽略歌手差异，歌名一致即视为已存在
+    // 只按歌名宽松匹配：歌名一致且歌手一致才视为已存在；歌手不同（同名不同歌手）不算，避免误判
     if (titleBase && matchesTitlePrefix(entry, titleBase, exts)) {
+      if (classifyExistingMatch(opts.title, opts.artist, entry) !== 'exists') continue
       const full = join(dir, entry)
       try {
         if (statSync(full).isFile()) return full
@@ -351,6 +878,78 @@ export function enqueueDownload(input: {
       ts,
       ts,
     )
+  emitTask(id)
+  kickWorker()
+  return getTask(id)!
+}
+
+/**
+ * 多版本待确认：把同名不同歌手的歌曲写入「待确认」状态，不下载。
+ * 弹窗无人处理（关闭窗口/稍后再说）时保留，供下载列表待确认区继续处理。
+ */
+export function enqueuePendingConfirm(input: {
+  title: string
+  artist: string
+  album?: string | null
+  platform: string
+  quality?: string | null
+  musicInfo?: Record<string, any>
+  externalId?: string | null
+  versions?: Array<{ name: string; path: string; size: number }>
+}) {
+  const settings = getSettings()
+  const id = randomUUID()
+  const ts = nowIso()
+  const musicPayload = {
+    ...(input.musicInfo || {}),
+    __versions: input.versions || [],
+  }
+  getDb()
+    .prepare(
+      `INSERT INTO download_tasks (
+        id, title, artist, album, platform, source_id, quality, status, progress,
+        external_id, match_method, batch_id, playlist_url, music_info_json, file_path, file_size, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
+    )
+    .run(
+      id,
+      input.title,
+      input.artist,
+      input.album || null,
+      input.platform,
+      input.quality || settings.defaultQuality,
+      'pending_confirm',
+      input.externalId || null,
+      JSON.stringify(musicPayload),
+      ts,
+      ts,
+    )
+  emitTask(id)
+  return getTask(id)!
+}
+
+/** 待确认任务确认下载：转 queued 并分配音源，可覆盖音质 */
+export function confirmPending(id: string, opts?: { quality?: string }) {
+  const task = getTask(id)
+  if (!task) throw createError({ statusCode: 404, statusMessage: '任务不存在' })
+  if (task.status !== 'pending_confirm') {
+    throw createError({ statusCode: 400, statusMessage: '仅「待确认」任务支持确认下载' })
+  }
+  const settings = getSettings()
+  const quality = opts?.quality?.trim() || task.quality || settings.defaultQuality
+  const allowed = new Set(['highest', 'flac24bit', 'flac', '320k', '128k', '192k'])
+  if (!allowed.has(quality)) {
+    throw createError({ statusCode: 400, statusMessage: `不支持的音质: ${quality}` })
+  }
+  const sourceId = listEnabledOkSources(task.platform)[0]?.id
+  if (!sourceId) {
+    throw createError({ statusCode: 400, statusMessage: `没有可用音源支持平台 ${task.platform}` })
+  }
+  getDb()
+    .prepare(
+      `UPDATE download_tasks SET status='queued', source_id=?, quality=?, progress=0, error=NULL, attempts=0, updated_at=? WHERE id=?`,
+    )
+    .run(sourceId, quality, nowIso(), id)
   emitTask(id)
   kickWorker()
   return getTask(id)!
@@ -767,6 +1366,39 @@ async function resolveUrl(task: DownloadTaskRow, qualityPref: string, excludeSou
   return { url: result.url, quality: result.quality, sourceId: result.sourceId }
 }
 
+/** 跨平台兜底：本平台音源取链失败时，搜索其他平台匹配，用其音源取链 */
+async function tryCrossPlatform(
+  task: DownloadTaskRow,
+  qualityPref: string,
+  reasons: string[],
+): Promise<{
+  resolved: { url: string; quality: string; sourceId: string | null }
+  platform: string
+  musicInfo: Record<string, any>
+} | null> {
+  try {
+    const { searchCrossPlatformTrack } = await import('./playlistService')
+    const result = await searchCrossPlatformTrack({
+      externalId: task.external_id || undefined,
+      title: task.title,
+      artist: task.artist,
+      album: task.album || undefined,
+      platform: task.platform,
+    })
+    if (!result.crossPlatform || !result.matched.selected?.musicInfo) return null
+    const sel = result.matched.selected
+    const resolved = await resolveMusicUrl({
+      platform: result.matchPlatform,
+      musicInfo: sel.musicInfo,
+      quality: qualityPref,
+    })
+    reasons.push(`已跨平台匹配到 ${result.matchPlatform} 音源`)
+    return { resolved, platform: result.matchPlatform, musicInfo: sel.musicInfo }
+  } catch {
+    return null
+  }
+}
+
 async function downloadFile(
   url: string,
   dest: string,
@@ -867,7 +1499,7 @@ async function processTask(task: DownloadTaskRow) {
   let lyricPath: string | null = null
   try {
     ensureDownloadDirWritable(settings.downloadDir)
-    const musicInfo = JSON.parse(task.music_info_json || '{}')
+    let musicInfo = JSON.parse(task.music_info_json || '{}')
     const qualityPref = task.quality || settings.defaultQuality
     // 无损请求时：下载到 mp3 自动换源重试，直到拿到真正的无损或试完所有音源
     const isLosslessRequest = qualityPref === 'flac' || qualityPref === 'flac24bit'
@@ -901,7 +1533,12 @@ async function processTask(task: DownloadTaskRow) {
         if (badSource) triedBadSources.add(badSource)
         attemptReasons.push(`取链失败：${err?.message || err}`)
         if (attempt < maxTries - 1) continue
-        throw err
+        // 跨平台兜底：本平台所有音源都失败时，搜索其他平台匹配，换平台取链
+        const cross = await tryCrossPlatform(task, qualityPref, attemptReasons)
+        if (!cross) throw err
+        resolved = cross.resolved
+        task.platform = cross.platform
+        musicInfo = cross.musicInfo
       }
       url = resolved.url
       quality = resolved.quality

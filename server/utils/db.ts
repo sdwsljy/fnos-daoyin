@@ -65,13 +65,22 @@ export function openDb(dataDir?: string) {
 }
 
 function migrateSchema(db: Database.Database) {
-  const cols = db.prepare(`PRAGMA table_info(download_tasks)`).all() as Array<{ name: string }>
-  const names = new Set(cols.map((c) => c.name))
-  if (!names.has('file_size')) {
+  const dlCols = db.prepare(`PRAGMA table_info(download_tasks)`).all() as Array<{ name: string }>
+  const dlNames = new Set(dlCols.map((c) => c.name))
+  if (!dlNames.has('file_size')) {
     db.exec(`ALTER TABLE download_tasks ADD COLUMN file_size INTEGER`)
   }
-  if (!names.has('total_bytes')) {
+  if (!dlNames.has('total_bytes')) {
     db.exec(`ALTER TABLE download_tasks ADD COLUMN total_bytes INTEGER`)
+  }
+  if (!dlNames.has('file_missing')) {
+    db.exec(`ALTER TABLE download_tasks ADD COLUMN file_missing INTEGER NOT NULL DEFAULT 0`)
+  }
+
+  const srcCols = db.prepare(`PRAGMA table_info(sources)`).all() as Array<{ name: string }>
+  const srcNames = new Set(srcCols.map((c) => c.name))
+  if (!srcNames.has('sort_order')) {
+    db.exec(`ALTER TABLE sources ADD COLUMN sort_order INTEGER`)
   }
 }
 

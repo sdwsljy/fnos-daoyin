@@ -4,6 +4,7 @@
 
     <div class="toolbar">
       <button class="btn-secondary" @click="refresh">刷新</button>
+      <button class="btn-secondary" @click="openReconcile">文件对账</button>
       <input
         v-model="searchQuery"
         type="search"
@@ -11,8 +12,77 @@
         placeholder="搜索歌名 / 歌手 / 文件名"
       />
       <span class="counts">
-        完成 {{ counts.completed }} / 下载中 {{ counts.running }} / 失败 {{ counts.failed }}
+        已下载文件 {{ stats?.files ?? '…' }} / 记录 {{ recordCount }} / 下载中 {{ counts.running }} / 失败 {{ counts.failed }}
       </span>
+    </div>
+
+    <div v-if="stats && stats.missing > 0" class="missing-banner">
+      <span class="missing-text">
+        {{ stats.missing }} 条下载记录对应的文件已丢失（可能被外部删除）。
+      </span>
+      <button class="btn-secondary" @click="filter = 'missing'">查看缺失</button>
+      <button class="btn-secondary" @click="purgeMissing">清理缺失记录</button>
+    </div>
+
+    <div v-if="reconcileOpen" class="reconcile-panel card">
+      <div class="reconcile-head">
+        <span class="reconcile-title">文件对账</span>
+        <button class="btn-ghost" @click="reconcileOpen = false">收起</button>
+      </div>
+      <div v-if="reconcileLoading" class="reconcile-loading">对账中…</div>
+      <template v-else-if="reconcileData">
+        <div class="reconcile-summary">
+          记录 {{ reconcileData.totalRecords }} · 文件 {{ reconcileData.totalFiles }} ·
+          差额 {{ reconcileData.totalRecords - reconcileData.totalFiles }}
+        </div>
+        <div class="reconcile-summary">
+          缺失 {{ reconcileData.missing.length }} · 共享重复 {{ sharedExtra }} ·
+          疑似改名 {{ reconcileData.renamed.length }} · 孤儿文件 {{ reconcileData.orphans.length }}
+        </div>
+        <div v-if="reconcileData.shared.length" class="reconcile-section">
+          <div class="reconcile-section-head">
+            <span class="reconcile-section-title">
+              共享文件（同一文件被多条记录引用，{{ reconcileData.shared.length }} 个文件 · 多出 {{ sharedExtra }} 条记录）
+            </span>
+            <button class="btn-secondary" @click="dedupeShared">清理重复记录</button>
+          </div>
+          <div v-for="s in reconcileData.shared" :key="s.path" class="reconcile-row">
+            <div class="reconcile-row-main">
+              <div class="reconcile-row-title">{{ s.path.split(/[\\/]/).pop() }}（{{ s.records.length }} 条记录）</div>
+              <div v-for="r in s.records" :key="r.id" class="reconcile-row-path">
+                · {{ r.title }} - {{ r.artist }}（{{ statusLabel(r.status) }}）
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="reconcileData.renamed.length" class="reconcile-section">
+          <div class="reconcile-section-title">疑似改名/迁移（{{ reconcileData.renamed.length }}）</div>
+          <div v-for="r in reconcileData.renamed" :key="r.id" class="reconcile-row">
+            <div class="reconcile-row-main">
+              <div class="reconcile-row-title">{{ r.title }}<span class="dim"> · {{ r.artist }}</span></div>
+              <div class="reconcile-row-path">旧：{{ r.file_path }}</div>
+              <div class="reconcile-row-path">新：{{ r.matchedFile.name }}</div>
+            </div>
+            <button class="btn-secondary" @click="relink(r)">重新关联</button>
+          </div>
+        </div>
+        <div v-if="reconcileData.orphans.length" class="reconcile-section">
+          <div class="reconcile-section-title">孤儿文件（无记录对应，{{ reconcileData.orphans.length }}）</div>
+          <div v-for="o in reconcileData.orphans" :key="o.path" class="reconcile-row">
+            <div class="reconcile-row-main">
+              <div class="reconcile-row-title">{{ o.name }}</div>
+              <div class="reconcile-row-path">{{ o.path }}（{{ formatBytes(o.size) }}）</div>
+            </div>
+            <button class="btn-secondary" @click="deleteOrphan(o)">删除文件</button>
+          </div>
+        </div>
+        <div
+          v-if="!reconcileData.shared.length && !reconcileData.renamed.length && !reconcileData.orphans.length && !reconcileData.missing.length"
+          class="reconcile-loading"
+        >
+          记录与磁盘文件完全一致。
+        </div>
+      </template>
     </div>
 
     <div class="filter-tabs">
@@ -54,6 +124,13 @@
           <button class="btn-secondary" @click="batchRetry">批量重试（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchDelete">批量删除（{{ selectedCount }}）</button>
         </template>
+        <template v-else-if="filter === 'pending'">
+          <button class="btn-secondary" @click="batchConfirmPending">批量确认下载（{{ selectedCount }}）</button>
+          <button class="btn-secondary" @click="batchDelete">批量删除（{{ selectedCount }}）</button>
+        </template>
+        <template v-else-if="filter === 'missing'">
+          <button class="btn-secondary" @click="batchDelete">批量删除记录（{{ selectedCount }}）</button>
+        </template>
         <template v-else>
           <button class="btn-secondary" @click="batchCancel">批量取消（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchRetry">批量重试（{{ selectedCount }}）</button>
@@ -84,11 +161,18 @@
         <div v-if="t.error && (t.status === 'failed' || t.status === 'queued')" class="task-error" :title="t.error">
           {{ t.error }}
         </div>
+        <div v-if="t.status === 'pending_confirm'" class="task-file pending-note">
+          同名不同歌手，待确认是否下载
+          <span v-if="pendingVersions(t).length" class="dim">（已有版本：{{ pendingVersions(t).map((v) => v.name).join('、') }}）</span>
+        </div>
         <div v-if="t.file_path && t.status === 'completed'" class="task-file">
           {{ t.file_path }}<span v-if="t.file_size" class="file-size">（{{ formatBytes(t.file_size) }}）</span>
         </div>
         <div v-if="t.file_path && t.status === 'existing'" class="task-file existing-file">
           {{ t.file_path }}<span v-if="t.file_size" class="file-size">（{{ formatBytes(t.file_size) }}）</span>
+        </div>
+        <div v-if="missingReasonById.get(t.id)" class="task-file missing-file">
+          {{ missingReasonLabel(missingReasonById.get(t.id)!) }}
         </div>
       </div>
       <div class="task-status">
@@ -96,7 +180,10 @@
         <span v-if="t.status === 'running'" class="percent">{{ formatPercent(t.progress) }}</span>
       </div>
       <div class="task-actions">
-        <template v-if="t.status === 'existing'">
+        <template v-if="t.status === 'pending_confirm'">
+          <button class="btn-ghost" @click="confirmPendingTask(t.id)">确认下载</button>
+        </template>
+        <template v-else-if="t.status === 'existing'">
           <button class="btn-ghost" @click="reDownload(t.id)">重新下载</button>
           <button class="btn-ghost" @click="openManualMatch(t)">手动匹配</button>
         </template>
@@ -168,16 +255,37 @@ import { useToast } from '~/composables/useToast'
 const { tasks, connect, disconnect } = useDownloadEvents()
 const toast = useToast()
 
-const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing' | 'cancelled'>('all')
+const filter = ref<'all' | 'downloading' | 'failed' | 'completed' | 'existing' | 'cancelled' | 'missing' | 'pending'>('all')
 const searchQuery = ref('')
 const filterTabs = [
   { value: 'all', label: '全部' },
   { value: 'downloading', label: '下载中' },
+  { value: 'pending', label: '待确认' },
   { value: 'failed', label: '下载失败' },
   { value: 'completed', label: '下载完成' },
   { value: 'cancelled', label: '已取消' },
   { value: 'existing', label: '已存在' },
+  { value: 'missing', label: '文件缺失' },
 ] as const
+
+type MissingItem = {
+  id: string
+  title: string
+  artist: string
+  platform: string
+  quality: string | null
+  status: string
+  file_path: string | null
+  reason: 'dir_missing' | 'ext_changed' | 'backup_left' | 'file_deleted'
+}
+
+const missingItems = ref<MissingItem[]>([])
+const missingIds = computed(() => new Set(missingItems.value.map((m) => m.id)))
+const missingReasonById = computed(() => {
+  const map = new Map<string, MissingItem['reason']>()
+  for (const m of missingItems.value) map.set(m.id, m.reason)
+  return map
+})
 
 function taskInFilter(t: DownloadTask, f: typeof filter.value) {
   switch (f) {
@@ -191,6 +299,10 @@ function taskInFilter(t: DownloadTask, f: typeof filter.value) {
       return t.status === 'completed'
     case 'existing':
       return t.status === 'existing'
+    case 'missing':
+      return missingIds.value.has(t.id)
+    case 'pending':
+      return t.status === 'pending_confirm'
     default:
       return true
   }
@@ -271,6 +383,160 @@ const counts = computed(() => {
   return c
 })
 
+const stats = ref<{
+  files: number
+  missing: number
+  records: {
+    total: number
+    completed: number
+    existing: number
+    running: number
+    queued: number
+    failed: number
+    cancelled: number
+  }
+} | null>(null)
+
+const recordCount = computed(() => {
+  if (!stats.value) return '…'
+  return stats.value.records.completed + stats.value.records.existing
+})
+
+async function loadStats() {
+  try {
+    stats.value = await $fetch('/api/downloads/stats')
+  } catch {
+    /* ignore */
+  }
+}
+
+async function purgeMissing() {
+  try {
+    const res = await $fetch<{ deleted: number }>('/api/downloads/purge-missing', { method: 'POST' })
+    toast.success(`已清理 ${res.deleted} 条缺失记录`)
+    refresh()
+    loadStats()
+    loadMissing()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '清理失败')
+  }
+}
+
+function missingReasonLabel(reason: string) {
+  switch (reason) {
+    case 'dir_missing':
+      return '目录不存在（可能下载目录已迁移/改名）'
+    case 'ext_changed':
+      return '同名文件扩展名已变（换格式/重下载）'
+    case 'backup_left':
+      return '存在重下载备份残留'
+    default:
+      return '文件被外部删除'
+  }
+}
+
+async function loadMissing() {
+  try {
+    const data = await $fetch<{ items: MissingItem[] }>('/api/downloads/missing')
+    missingItems.value = data.items || []
+  } catch {
+    /* ignore */
+  }
+}
+
+type ReconcileMissing = {
+  id: string
+  title: string
+  artist: string
+  platform: string
+  quality: string | null
+  status: string
+  file_path: string | null
+  reason: string
+}
+type ReconcileRenamed = ReconcileMissing & {
+  matchedFile: { name: string; path: string; size: number; mtime: number }
+}
+type ReconcileShared = {
+  path: string
+  size: number
+  records: Array<{ id: string; title: string; artist: string; status: string; quality: string | null }>
+}
+type ReconcileData = {
+  totalRecords: number
+  totalFiles: number
+  matched: number
+  missing: ReconcileMissing[]
+  shared: ReconcileShared[]
+  renamed: ReconcileRenamed[]
+  orphans: Array<{ name: string; path: string; size: number; mtime: number }>
+}
+
+const reconcileOpen = ref(false)
+const reconcileLoading = ref(false)
+const reconcileData = ref<ReconcileData | null>(null)
+const sharedExtra = computed(
+  () => reconcileData.value?.shared.reduce((s, x) => s + x.records.length - 1, 0) || 0,
+)
+
+async function loadReconcile() {
+  reconcileLoading.value = true
+  try {
+    reconcileData.value = await $fetch('/api/downloads/reconcile')
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '对账失败')
+  } finally {
+    reconcileLoading.value = false
+  }
+}
+
+function openReconcile() {
+  if (reconcileOpen.value) {
+    reconcileOpen.value = false
+    return
+  }
+  reconcileOpen.value = true
+  loadReconcile()
+}
+
+async function relink(r: ReconcileRenamed) {
+  try {
+    await $fetch('/api/downloads/relink', { method: 'POST', body: { id: r.id, path: r.matchedFile.path } })
+    toast.success('已重新关联')
+    loadReconcile()
+    refresh()
+    loadMissing()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '重新关联失败')
+  }
+}
+
+async function deleteOrphan(o: { path: string }) {
+  try {
+    await $fetch('/api/downloads/orphan-delete', { method: 'POST', body: { path: o.path } })
+    toast.success('已删除文件')
+    loadReconcile()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '删除失败')
+  }
+}
+
+async function dedupeShared() {
+  if (!reconcileData.value?.shared.length) return
+  const n = reconcileData.value.shared.reduce((sum, s) => sum + s.records.length - 1, 0)
+  if (!confirm(`确认清理 ${n} 条重复记录？每个共享文件仅保留一条（优先「下载完成」，只删记录不删文件）。`)) return
+  try {
+    const res = await $fetch<{ deleted: number }>('/api/downloads/dedupe-shared', { method: 'POST' })
+    toast.success(`已清理 ${res.deleted} 条重复记录`)
+    loadReconcile()
+    refresh()
+    loadStats()
+    loadMissing()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '清理失败')
+  }
+}
+
 function refresh() {
   $fetch<{ items: DownloadTask[] }>('/api/downloads')
     .then((d) => {
@@ -313,6 +579,44 @@ async function batchReDownload() {
   } catch (e: any) {
     toast.error(e?.statusMessage || '操作失败')
   }
+}
+
+function pendingVersions(t: DownloadTask) {
+  try {
+    const mi = JSON.parse(t.music_info_json || '{}')
+    return Array.isArray(mi.__versions) ? (mi.__versions as Array<{ name: string }>) : []
+  } catch {
+    return []
+  }
+}
+
+async function confirmPendingTask(id: string) {
+  try {
+    await $fetch(`/api/downloads/${id}/confirm`, { method: 'POST' })
+    toast.success('已确认下载')
+    refresh()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '操作失败')
+  }
+}
+
+async function batchConfirmPending() {
+  if (!selectedCount.value) return
+  const ids = [...selected.value]
+  let ok = 0
+  let fail = 0
+  for (const id of ids) {
+    try {
+      await $fetch(`/api/downloads/${id}/confirm`, { method: 'POST' })
+      ok += 1
+    } catch {
+      fail += 1
+    }
+  }
+  selected.value = new Set()
+  if (fail) toast.warning(`确认下载：成功 ${ok}，失败 ${fail}`)
+  else toast.success(`已确认下载 ${ok} 首`)
+  refresh()
 }
 
 async function cancel(id: string) {
@@ -515,6 +819,8 @@ async function loadSources() {
 onMounted(() => {
   connect()
   refresh()
+  loadStats()
+  loadMissing()
   loadSources()
 })
 
@@ -539,6 +845,106 @@ onUnmounted(() => {
 .counts {
   color: var(--color-text-dim);
   font-size: 13px;
+}
+
+.missing-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius);
+  background: var(--color-warning-soft, var(--color-bg-elev));
+}
+
+.missing-text {
+  flex: 1;
+  color: var(--color-warning);
+  font-size: 13px;
+}
+
+.missing-file {
+  color: var(--color-warning);
+}
+
+.reconcile-panel {
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.reconcile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.reconcile-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.reconcile-loading {
+  color: var(--color-text-dim);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.reconcile-summary {
+  color: var(--color-text-dim);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.reconcile-section {
+  margin-top: 10px;
+}
+
+.reconcile-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.reconcile-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.reconcile-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.reconcile-row:last-child {
+  border-bottom: none;
+}
+
+.reconcile-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.reconcile-row-title {
+  font-size: 13px;
+}
+
+.reconcile-row-title .dim {
+  color: var(--color-text-dim);
+}
+
+.reconcile-row-path {
+  color: var(--color-text-dim);
+  font-size: 12px;
+  margin-top: 2px;
+  word-break: break-all;
 }
 
 .filter-tabs {
@@ -691,5 +1097,12 @@ onUnmounted(() => {
 }
 .status-cancelled {
   color: var(--color-text-dim);
+}
+.status-pending_confirm {
+  color: var(--color-warning);
+}
+
+.pending-note {
+  color: var(--color-warning);
 }
 </style>

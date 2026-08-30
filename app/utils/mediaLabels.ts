@@ -31,6 +31,7 @@ export const TASK_STATUS_LABELS: Record<string, string> = {
   failed: '失败',
   cancelled: '已取消',
   existing: '已存在',
+  pending_confirm: '待确认',
 }
 
 export function formatDuration(sec: number) {

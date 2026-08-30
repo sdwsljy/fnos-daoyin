@@ -5,6 +5,15 @@
       @authorize="goFnOsAuthorize"
       @dismiss="dismissBanner()"
     />
+    <MultiVersionDialog
+      v-if="mvTarget"
+      :title="mvTarget.item.title"
+      :artist="mvTarget.item.artist"
+      :versions="multiVersions(mvTarget.item)"
+      @later="laterMv"
+      @skip="skipMv"
+      @download="downloadMv"
+    />
     <div class="search-bar">
       <div class="tabs">
         <button
@@ -51,7 +60,11 @@
             <template v-if="previewingId === item.id">取链中…</template>
             <template v-else>试听</template>
           </button>
-          <button class="btn-ghost" @click="openDownload(item)">下载</button>
+          <button v-if="isExisting(item)" class="btn-ghost existing-btn" disabled>已下载</button>
+          <button v-else-if="multiVersions(item).length" class="btn-ghost mv-btn" @click="openMultiVersion(item)">
+            多版本
+          </button>
+          <QualityMenu v-else @pick="(q) => enqueue(item, q)" />
         </div>
       </div>
     </div>
@@ -71,6 +84,7 @@ import { usePlayer } from '~/composables/usePlayer'
 import { useToast } from '~/composables/useToast'
 import { useDownloadEvents } from '~/composables/useDownloadEvents'
 import { useFnOsDirAuth } from '~/composables/useFnOsDirAuth'
+import { useLocalExisting } from '~/composables/useLocalExisting'
 
 const { showHomeBanner, refresh: refreshFnOsAuth, dismissBanner } = useFnOsDirAuth()
 const route = useRoute()
@@ -111,6 +125,7 @@ const previewing = computed(() => previewingId.value !== '')
 const { play } = usePlayer()
 const toast = useToast()
 const { connect, disconnect } = useDownloadEvents()
+const { check: checkExisting, isExisting, multiVersions, savePending, confirmPending, skipPending } = useLocalExisting()
 
 async function doSearch() {
   if (!keyword.value.trim()) return
@@ -124,6 +139,14 @@ async function doSearch() {
     items.value = data.items
     if (platforms.value.length === 0) platforms.value = data.platforms
     searched.value = true
+    checkExisting(
+      data.items.map((i) => ({
+        title: i.title,
+        artist: i.artist,
+        album: i.album,
+        platform: i.platform,
+      })),
+    )
   } catch (e: any) {
     error.value = e?.data?.message || e?.statusMessage || '搜索失败'
     items.value = []
@@ -161,17 +184,6 @@ async function preview(item: SearchItem) {
   }
 }
 
-function openDownload(item: SearchItem) {
-  const qualityOptions = ['flac24bit', 'flac', '320k', '192k', '128k']
-  const quality = window.prompt(
-    `选择音质（${qualityOptions.join(' / ')}），默认 flac24bit：`,
-    'flac24bit',
-  )
-  if (quality === null) return
-  const normalized = qualityOptions.includes(quality) ? quality : 'flac24bit'
-  void enqueue(item, normalized)
-}
-
 async function enqueue(item: SearchItem, quality: string) {
   try {
     await $fetch('/api/downloads', {
@@ -190,6 +202,50 @@ async function enqueue(item: SearchItem, quality: string) {
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '入队失败')
   }
+}
+
+const mvTarget = ref<{ item: SearchItem; pendingId: string } | null>(null)
+
+async function openMultiVersion(item: SearchItem) {
+  const versions = multiVersions(item)
+  const id = await savePending(
+    {
+      title: item.title,
+      artist: item.artist,
+      album: item.album,
+      platform: platform.value,
+      musicInfo: item.musicInfo,
+      externalId: item.externalId,
+    },
+    versions,
+  )
+  if (!id) {
+    toast.error('写入待确认失败')
+    return
+  }
+  mvTarget.value = { item, pendingId: id }
+}
+
+async function downloadMv(quality: string) {
+  const mv = mvTarget.value
+  mvTarget.value = null
+  if (!mv) return
+  try {
+    await confirmPending(mv.pendingId, quality)
+    toast.success(`已加入队列：${mv.item.title}`)
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '确认下载失败')
+  }
+}
+
+function skipMv() {
+  const mv = mvTarget.value
+  mvTarget.value = null
+  if (mv) skipPending(mv.pendingId).catch(() => {})
+}
+
+function laterMv() {
+  mvTarget.value = null
 }
 
 onMounted(() => {
@@ -318,6 +374,15 @@ onUnmounted(() => {
 
 .play-btn {
   min-width: 56px;
+}
+
+.existing-btn {
+  color: var(--color-success);
+  opacity: 0.7;
+}
+
+.mv-btn {
+  color: var(--color-warning);
 }
 
 .pager {

@@ -1,4 +1,4 @@
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'existing'
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'existing' | 'pending_confirm'
 
 /** 可自动重试的错误（不做断点续传，整文件重下） */
 export function isRetryableError(err: unknown): boolean {

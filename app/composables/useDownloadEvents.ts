@@ -1,6 +1,6 @@
 import type { Ref } from 'vue'
 
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'deleted'
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'deleted' | 'pending_confirm'
 
 export type DownloadTask = {
   id: string
@@ -22,6 +22,8 @@ export type DownloadTask = {
   playlist_url: string | null
   file_size: number | null
   total_bytes: number | null
+  file_missing?: number
+  music_info_json?: string | null
   created_at: string
   updated_at: string
 }

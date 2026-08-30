@@ -1,5 +1,5 @@
 appname=daoyin
-version=1.4.2
+version=2.0.0
 display_name=盗音
 desc=多源音乐搜索、试听与下载助手（洛雪音源兼容）。支持 wy / tx / kg 歌单导入。
 platform=all
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=daoyin.main
 install_dep_apps=nodejs_v22
 ctl_stop=true
-changelog=修复 QQ 歌单数量显示；替换软件图标。
+changelog=下载统计与本地文件对账、下载前预检、音乐多版本与待确认持久化。

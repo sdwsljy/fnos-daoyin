@@ -12,7 +12,10 @@ export type PlaylistBoard = {
   playCount?: number
   collectCount?: number
   creator?: string
+  desc?: string
 }
+
+export type PlaylistBoardSort = 'hot' | 'new'
 
 export type PlaylistBoardTrack = {
   title: string
@@ -51,7 +54,7 @@ function formatInterval(sec: number): string {
 
 function trackToMusicInfo(track: PlaylistTrackDraft): Record<string, any> {
   const ext = track.externalId || ''
-  return {
+  const info: Record<string, any> = {
     name: track.title,
     singer: track.artist,
     albumName: track.album || '',
@@ -60,19 +63,24 @@ function trackToMusicInfo(track: PlaylistTrackDraft): Record<string, any> {
     source: track.platform,
     interval: track.duration ? formatInterval(track.duration) : undefined,
   }
+  if (track.platform === 'mg') {
+    info.copyrightId = ext
+  }
+  return info
 }
 
 const PAGE_SIZE = 30
 
 /* ---------------- 网易云歌单 ---------------- */
 
-async function listWyBoards(): Promise<PlaylistBoard[]> {
+async function listWyBoards(page: number, sort: PlaylistBoardSort): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
+  const order = sort === 'new' ? 'new' : 'hot'
   const data = await fetchJson(
-    'https://music.163.com/api/playlist/highquality/list?cat=%E5%85%A8%E9%83%A8&limit=30',
+    `https://music.163.com/api/playlist/list?cat=${encodeURIComponent('全部')}&order=${order}&limit=30&offset=${(page - 1) * 30}`,
     { headers: { Referer: 'https://music.163.com/' } },
   )
   const list = data?.playlists || []
-  return list
+  const items = list
     .map((p: any) => ({
       id: String(p.id),
       name: String(p.name || '').trim(),
@@ -81,82 +89,97 @@ async function listWyBoards(): Promise<PlaylistBoard[]> {
       playCount: Number(p.playCount || 0),
       collectCount: Number(p.subscribedCount || 0),
       creator: p.creator?.nickname || undefined,
+      desc: p.description || undefined,
     }))
     .filter((b: PlaylistBoard) => b.id && b.name)
+  return { items, hasMore: list.length >= 30 }
 }
 
 /* ---------------- QQ 歌单 ---------------- */
 
-async function listTxBoards(): Promise<PlaylistBoard[]> {
-  // 按分类获取歌单（categoryId=10000000 全部）；需指定 UTF-8，否则 dissname 返回 GBK 乱码
-  const data = await fetchJson(
-    'https://c.y.qq.com/splcloud/fcgi-bin/fcg_get_diss_by_tag.fcg?categoryId=10000000&sortId=5&sin=0&ein=30&format=json&inCharset=utf-8&outCharset=utf-8',
-    { headers: { Referer: 'https://y.qq.com/' } },
-  )
-  const list = data?.data?.list || []
-  const boards: PlaylistBoard[] = list
-    .map((p: any) => ({
-      id: String(p.dissid),
-      name: String(p.dissname || '').trim(),
-      cover: p.imgurl || undefined,
-      playCount: Number(p.listennum || 0),
-      creator: p.creator?.name || undefined,
-    }))
-    .filter((b) => b.id && b.name)
-
-  // 列表接口无歌曲数，通过 musicu 批量补 songnum
-  if (boards.length) {
-    const body: Record<string, any> = { comm: { ct: 24, cv: 0 } }
-    boards.forEach((b, i) => {
-      body[`req_${i}`] = {
-        module: 'music.srfDissInfo.aiDissInfo',
-        method: 'uniform_get_Dissinfo',
-        param: { disstid: Number(b.id), userinfo: 0, tag: 0, song_begin: 0, song_num: 0 },
-      }
-    })
-    try {
-      const detail = await fetchJson(
-        'https://u.y.qq.com/cgi-bin/musicu.fcg',
-        {
-          method: 'POST',
-          headers: { Referer: 'https://y.qq.com/', 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        },
-        20000,
-      )
-      boards.forEach((b, i) => {
-        const songnum = detail?.[`req_${i}`]?.data?.dirinfo?.songnum
-        if (songnum) b.count = Number(songnum)
-      })
-    } catch {
-      /* 歌曲数获取失败不影响歌单列表 */
-    }
+async function listTxBoards(page: number, sort: PlaylistBoardSort): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
+  // QQ 歌单广场：musicu PlayListPlazaServer（GET），一次返回歌曲数/播放量/作者/封面
+  const limit = 30
+  const order = sort === 'new' ? 2 : 5
+  const payload = {
+    comm: { cv: 1602, ct: 20 },
+    playlist: {
+      method: 'get_playlist_by_tag',
+      param: { id: 10000000, sin: limit * (page - 1), size: limit, order, cur_page: page },
+      module: 'playlist.PlayListPlazaServer',
+    },
   }
-  return boards
+  const url = `https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data=${encodeURIComponent(JSON.stringify(payload))}`
+  const data = await fetchJson(url, { headers: { Referer: 'https://y.qq.com/' } })
+  const list = data?.playlist?.data?.v_playlist || []
+  const items = list
+    .map((p: any) => ({
+      id: String(p.tid),
+      name: String(p.title || '').trim(),
+      cover: p.cover_url_medium || p.cover_url_big || undefined,
+      count: Number(p.song_ids?.length || 0),
+      playCount: Number(p.access_num || 0),
+      creator: p.creator_info?.nick || undefined,
+      desc: p.desc || undefined,
+    }))
+    .filter((b: PlaylistBoard) => b.id && b.name)
+  return { items, hasMore: list.length >= limit }
 }
 
 /* ---------------- 酷狗歌单 ---------------- */
 
-async function listKgBoards(): Promise<PlaylistBoard[]> {
-  // 移动端歌单广场 JSON 接口（API v3 playlist/list 已被反爬）
-  const data = await fetchJson('http://m.kugou.com/plist/index?json=true', {
-    headers: {
-      Referer: 'http://m.kugou.com/',
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
-    },
+async function listKgBoards(page: number, sort: PlaylistBoardSort): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
+  // 酷狗歌单广场：yueku 接口（比 m.kugou.com 更稳，支持排序）
+  const sortMap: Record<PlaylistBoardSort, string> = { hot: '6', new: '7' }
+  const t = sortMap[sort] || '6'
+  const data = await fetchJson(`http://www2.kugou.kugou.com/yueku/v9/special/getSpecial?is_ajax=1&cdn=cdn&t=${t}&c=&p=${page}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
   })
-  const list = data?.plist?.list?.info || []
-  return list
+  const list = data?.special_db || []
+  const items = list
     .map((p: any) => ({
       id: String(p.specialid),
       name: String(p.specialname || '').trim(),
-      cover: p.imgurl ? String(p.imgurl).replace('{size}', '240') : undefined,
+      cover: p.imgurl ? String(p.imgurl).replace('{size}', '400') : undefined,
       count: Number(p.songcount || 0),
-      playCount: Number(p.playcount || 0),
-      collectCount: Number(p.collectcount || 0),
-      creator: p.username || undefined,
+      playCount: Number(p.play_count || p.total_play_count || 0),
+      creator: p.nickname || p.singername || undefined,
+      desc: p.intro || undefined,
     }))
     .filter((b: PlaylistBoard) => b.id && b.name)
+  return { items, hasMore: list.length >= 30 }
+}
+
+/* ---------------- 咪咕歌单 ---------------- */
+
+async function listMgBoards(page: number): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
+  const data = await fetchJson(
+    `https://app.c.nf.migu.cn/pc/bmw/page-data/playlist-square-recommend/v1.0?templateVersion=2&pageNo=${page}`,
+    {
+      headers: {
+        Referer: 'https://m.music.migu.cn/',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+      },
+    },
+  )
+  const items: PlaylistBoard[] = []
+  const seen = new Set<string>()
+  const walk = (contents: any[]) => {
+    for (const item of contents || []) {
+      if (item.contents?.length) walk(item.contents)
+      const id = item.resId || item.txt4 || (item.viewId?.startsWith('4006-') ? item.viewId.split('-')[1] : '')
+      if (id && item.txt && !seen.has(String(id))) {
+        seen.add(String(id))
+        items.push({
+          id: String(id),
+          name: String(item.txt || '').trim(),
+          cover: item.img || item.img2 || item.txt5 || undefined,
+        })
+      }
+    }
+  }
+  walk(data?.data?.contents || [])
+  return { items, hasMore: false }
 }
 
 /* ---------------- 缓存 ---------------- */
@@ -191,18 +214,24 @@ export function clearPlaylistBoardCache() {
 
 /* ---------------- 对外 ---------------- */
 
-export async function listPlaylistBoards(platform: string, refresh = false): Promise<PlaylistBoard[]> {
-  const key = `boards:${platform}`
+export async function listPlaylistBoards(
+  platform: string,
+  refresh = false,
+  page = 1,
+  sort: PlaylistBoardSort = 'hot',
+): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
+  const key = `boards:${platform}:${page}:${sort}`
   if (refresh) cache.delete(key)
-  const cached = getCached<PlaylistBoard[]>(key)
+  const cached = getCached<{ items: PlaylistBoard[]; hasMore: boolean }>(key)
   if (cached) return cached
-  let boards: PlaylistBoard[]
-  if (platform === 'wy') boards = await listWyBoards()
-  else if (platform === 'tx') boards = await listTxBoards()
-  else if (platform === 'kg') boards = await listKgBoards()
+  let result: { items: PlaylistBoard[]; hasMore: boolean }
+  if (platform === 'wy') result = await listWyBoards(page, sort)
+  else if (platform === 'tx') result = await listTxBoards(page, sort)
+  else if (platform === 'kg') result = await listKgBoards(page, sort)
+  else if (platform === 'mg') result = await listMgBoards(page)
   else throw createError({ statusCode: 400, statusMessage: `暂不支持该平台歌单: ${platform}` })
-  setCached(key, boards)
-  return boards
+  setCached(key, result)
+  return result
 }
 
 export async function getPlaylistTracks(

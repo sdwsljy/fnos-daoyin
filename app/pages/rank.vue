@@ -61,7 +61,11 @@
             <span v-if="t.album" class="dim"> · {{ t.album }}</span>
           </div>
           <div class="track-actions">
-            <button class="btn-ghost" @click="enqueueOne(t)">下载</button>
+            <button v-if="isExisting(t)" class="btn-ghost" disabled>已下载</button>
+            <button v-else-if="multiVersions(t).length" class="btn-ghost mv-btn" @click="openMultiVersion(t)">
+              多版本
+            </button>
+            <button v-else class="btn-ghost" @click="enqueueOne(t)">下载</button>
           </div>
         </div>
       </div>
@@ -69,6 +73,16 @@
       <div v-if="loadingTracks" class="hint">加载中…</div>
       <button v-else-if="hasMore" class="btn-secondary load-more" @click="loadMore">加载更多</button>
     </div>
+
+    <MultiVersionDialog
+      v-if="mvTarget"
+      :title="mvTarget.item.title"
+      :artist="mvTarget.item.artist"
+      :versions="multiVersions(mvTarget.item)"
+      @later="laterMv"
+      @skip="skipMv"
+      @download="downloadMv"
+    />
   </div>
 </template>
 
@@ -76,6 +90,7 @@
 import { onMounted, ref } from 'vue'
 import { qualityLabel } from '~/utils/mediaLabels'
 import { useToast } from '~/composables/useToast'
+import { useLocalExisting } from '~/composables/useLocalExisting'
 
 type RankBoard = { id: string; name: string; cover?: string }
 type RankTrack = {
@@ -94,6 +109,7 @@ const platforms = [
 ]
 
 const toast = useToast()
+const { check: checkExisting, isExisting, multiVersions, savePending, confirmPending, skipPending } = useLocalExisting()
 
 const platform = ref('wy')
 const boards = ref<RankBoard[]>([])
@@ -170,6 +186,14 @@ async function loadTracks(refresh = false) {
     if (refresh) tracks.value = data.items || []
     else tracks.value = tracks.value.concat(data.items || [])
     hasMore.value = data.hasMore
+    checkExisting(
+      tracks.value.map((t) => ({
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        platform: platform.value,
+      })),
+    )
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '歌曲加载失败')
   } finally {
@@ -189,19 +213,55 @@ async function loadMore() {
 
 async function enqueueAll() {
   if (!tracks.value.length) return
+  const multi = tracks.value.filter((t) => multiVersions(t).length)
+  const toEnqueue = tracks.value.filter((t) => !isExisting(t) && !multiVersions(t).length)
+  const skipped = tracks.value.length - toEnqueue.length - multi.length
+
+  let pendingCount = 0
+  if (multi.length) {
+    try {
+      const data = await $fetch<{ count: number }>('/api/downloads/pending', {
+        method: 'POST',
+        body: {
+          items: multi.map((t) => ({
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+            platform: platform.value,
+            quality: quality.value,
+            musicInfo: t.musicInfo,
+            externalId: t.externalId,
+            versions: multiVersions(t),
+          })),
+        },
+      })
+      pendingCount = data.count || 0
+    } catch {
+      pendingCount = 0
+    }
+  }
+
+  if (!toEnqueue.length) {
+    toast.info(pendingCount ? `多版本 ${pendingCount} 首已加入待确认` : '所选歌曲均已下载')
+    return
+  }
+
   enqueueing.value = true
   try {
     const data = await $fetch<{ total: number; enqueued: number }>('/api/rank/enqueue', {
       method: 'POST',
       body: {
         platform: platform.value,
-        tracks: tracks.value,
+        tracks: toEnqueue,
         quality: quality.value,
         downloadLyric: downloadLyric.value,
         lyricMode: lyricMode.value,
       },
     })
-    toast.success(`已入队 ${data.enqueued} 首`)
+    const parts = [`已入队 ${data.enqueued} 首`]
+    if (skipped) parts.push(`跳过已存在 ${skipped} 首`)
+    if (pendingCount) parts.push(`多版本 ${pendingCount} 首加入待确认`)
+    toast.success(parts.join('，'))
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '入队失败')
   } finally {
@@ -225,6 +285,50 @@ async function enqueueOne(t: RankTrack) {
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '入队失败')
   }
+}
+
+const mvTarget = ref<{ item: RankTrack; pendingId: string } | null>(null)
+
+async function openMultiVersion(t: RankTrack) {
+  const versions = multiVersions(t)
+  const id = await savePending(
+    {
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      platform: platform.value,
+      musicInfo: t.musicInfo,
+      externalId: t.externalId,
+    },
+    versions,
+  )
+  if (!id) {
+    toast.error('写入待确认失败')
+    return
+  }
+  mvTarget.value = { item: t, pendingId: id }
+}
+
+async function downloadMv(quality: string) {
+  const mv = mvTarget.value
+  mvTarget.value = null
+  if (!mv) return
+  try {
+    await confirmPending(mv.pendingId, quality)
+    toast.success(`已加入队列：${mv.item.title}`)
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '确认下载失败')
+  }
+}
+
+function skipMv() {
+  const mv = mvTarget.value
+  mvTarget.value = null
+  if (mv) skipPending(mv.pendingId).catch(() => {})
+}
+
+function laterMv() {
+  mvTarget.value = null
 }
 
 onMounted(() => {
@@ -342,6 +446,10 @@ onMounted(() => {
 
 .track-actions {
   flex-shrink: 0;
+}
+
+.mv-btn {
+  color: var(--color-warning);
 }
 
 .load-more {

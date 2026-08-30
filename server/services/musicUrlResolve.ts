@@ -100,6 +100,27 @@ type LoadedSource = {
  * - highest：每档试遍所有源，全失败再降档
  * - 固定音质：该档试遍所有源
  */
+/** 简化音源脚本错误消息：识别常见错误码并截断原始接口 JSON，避免把长 JSON 抛给用户 */
+function shortenSourceError(raw: unknown): string {
+  const m = String((raw as any)?.message || raw || '').trim()
+  if (!m) return ''
+  const codeHint: Record<string, string> = {
+    '104003': '该音质无版权或无资源',
+    '100000': '参数错误',
+    '100001': '歌曲不存在',
+  }
+  const codeMatch = m.match(/"code"\s*:\s*(\d{6})/)
+  if (codeMatch && codeHint[codeMatch[1]!]) {
+    return codeHint[codeMatch[1]!]
+  }
+  const braceIdx = m.indexOf('{')
+  let out = braceIdx >= 0 ? m.slice(0, braceIdx).trim() : m
+  if (!out) out = m
+  const MAX = 160
+  if (out.length > MAX) out = out.slice(0, MAX) + '…'
+  return out
+}
+
 export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<ResolveMusicUrlResult> {
   const preferred = input.quality || 'highest'
   const highest = isHighestQuality(preferred)
@@ -128,8 +149,7 @@ export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<Reso
       }
       loaded.push({ source, handle, available })
     } catch (err: any) {
-      const msg = err?.message || String(err)
-      errors.push(`${source.name}: 加载失败（${msg}）`)
+      errors.push(`${source.name}: 加载失败（${shortenSourceError(err)}）`)
     }
   }
 
@@ -161,8 +181,7 @@ export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<Reso
           sourceName: source.name,
         }
       } catch (err: any) {
-        const msg = err?.message || String(err)
-        errors.push(`${source.name}@${q}: ${msg}`)
+        errors.push(`${source.name}@${q}: ${shortenSourceError(err)}`)
       }
     }
   }

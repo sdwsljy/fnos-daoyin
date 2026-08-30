@@ -472,7 +472,10 @@ function createLxUtils() {
 export async function loadLxSource(localPath: string, opts?: { bypassCache?: boolean }): Promise<LxSourceHandle> {
   const st = statSync(localPath)
   const key = `${localPath}:${st.mtimeMs}`
-  assertCircuitClosed(localPath)
+  // 音源检测（bypassCache）绕过熔断，允许重新评估音源是否恢复
+  if (!opts?.bypassCache) {
+    assertCircuitClosed(localPath)
+  }
 
   if (!opts?.bypassCache) {
     const hit = handleCache.get(key)
@@ -679,7 +682,11 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
       recordSuccess(localPath)
       return url
     } catch (err) {
-      recordFailure(localPath)
+      // 仅「取链超时」视为音源故障计入熔断；「未能获取播放地址」是该歌此音源没有，属正常，不熔断
+      const msg = String((err as any)?.message || err || '')
+      if (msg.includes('超时')) {
+        recordFailure(localPath)
+      }
       throw err
     } finally {
       holdSourceRejectionGuard(1500)

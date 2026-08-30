@@ -16,7 +16,18 @@
     </div>
 
     <div v-if="sources.length" class="source-list">
-      <div v-for="s in sources" :key="s.id" class="source-row card">
+      <div
+        v-for="(s, i) in sources"
+        :key="s.id"
+        class="source-row card"
+        :class="{ 'drag-over': dragOverIndex === i }"
+        draggable="true"
+        @dragstart="onDragStart(i, $event)"
+        @dragover.prevent="onDragOver(i)"
+        @drop.prevent="onDrop(i)"
+        @dragend="onDragEnd"
+      >
+        <div class="drag-handle" title="拖拽排序">⠿</div>
         <div class="source-main">
           <div class="source-name">
             {{ s.name }}
@@ -30,6 +41,11 @@
           <div v-if="s.last_error" class="source-error" :title="s.last_error">{{ s.last_error }}</div>
         </div>
         <div class="source-actions">
+          <div class="sort-actions">
+            <button class="btn-ghost sort-btn" :disabled="i === 0" title="上移" @click="moveUp(i)">↑</button>
+            <button class="btn-ghost sort-btn" :disabled="i === sources.length - 1" title="下移" @click="moveDown(i)">↓</button>
+            <button class="btn-ghost sort-btn" :disabled="i === 0" title="置顶" @click="moveTop(i)">⤒</button>
+          </div>
           <button class="btn-ghost" @click="toggle(s)">{{ s.enabled ? '停用' : '启用' }}</button>
           <button class="btn-ghost" @click="openEdit(s)">编辑</button>
           <button class="btn-ghost" @click="askDelete(s)">删除</button>
@@ -143,6 +159,68 @@ async function loadSources() {
 
 function platformList(platforms: string[]) {
   return (platforms || []).join(' / ')
+}
+
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+
+function onDragStart(i: number, e: DragEvent) {
+  dragIndex.value = i
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+
+function onDragOver(i: number) {
+  dragOverIndex.value = i
+}
+
+async function onDrop(i: number) {
+  const from = dragIndex.value
+  dragIndex.value = null
+  dragOverIndex.value = null
+  if (from === null || from === i) return
+  move(from, i)
+  await saveOrder()
+}
+
+function onDragEnd() {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
+function move(from: number, to: number) {
+  const arr = [...sources.value]
+  const [item] = arr.splice(from, 1)
+  if (item) arr.splice(to, 0, item)
+  sources.value = arr
+}
+
+async function saveOrder() {
+  try {
+    await $fetch('/api/sources/reorder', {
+      method: 'POST',
+      body: { ids: sources.value.map((s) => s.id) },
+    })
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '保存排序失败')
+  }
+}
+
+function moveUp(i: number) {
+  if (i <= 0) return
+  move(i, i - 1)
+  void saveOrder()
+}
+
+function moveDown(i: number) {
+  if (i >= sources.value.length - 1) return
+  move(i, i + 1)
+  void saveOrder()
+}
+
+function moveTop(i: number) {
+  if (i <= 0) return
+  move(i, 0)
+  void saveOrder()
 }
 
 function toggle(s: SourceRow) {
@@ -425,6 +503,32 @@ onMounted(loadSources)
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.source-row.drag-over {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--color-text-dim);
+  font-size: 18px;
+  align-self: center;
+  user-select: none;
+  line-height: 1;
+}
+
+.sort-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.sort-btn {
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .source-main {

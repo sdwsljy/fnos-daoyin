@@ -22,6 +22,7 @@ export type SourceRow = {
   enabled: number
   status: string
   platforms: string
+  sort_order: number | null
   last_checked_at: string | null
   last_error: string | null
   created_at: string
@@ -45,7 +46,19 @@ function isHttpUrl(url: string) {
 }
 
 export function listSources(): SourceRow[] {
-  return getDb().prepare('SELECT * FROM sources ORDER BY created_at DESC').all() as SourceRow[]
+  return getDb()
+    .prepare('SELECT * FROM sources ORDER BY sort_order IS NULL, sort_order ASC, created_at DESC')
+    .all() as SourceRow[]
+}
+
+/** 按用户设置的顺序保存音源排序（未列出的音源置为未排序） */
+export function reorderSources(ids: string[]): void {
+  const db = getDb()
+  db.prepare(`UPDATE sources SET sort_order = NULL`).run()
+  const stmt = db.prepare(`UPDATE sources SET sort_order = ? WHERE id = ?`)
+  ids.forEach((id, i) => {
+    stmt.run(i + 1, id)
+  })
 }
 
 export function getSource(id: string): SourceRow | undefined {
