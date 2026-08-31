@@ -6,6 +6,7 @@
     </main>
     <AppToast />
     <PageLoading />
+    <PlayerBar />
   </div>
 </template>
 

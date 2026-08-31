@@ -203,6 +203,7 @@
               <span v-if="t.album" class="dim"> · {{ t.album }}</span>
             </div>
             <div class="track-actions">
+              <button class="btn-ghost" @click="preview(t)">试听</button>
               <button v-if="isExisting(t)" class="btn-ghost" disabled>已下载</button>
               <button v-else-if="multiVersions(t).length" class="btn-ghost mv-btn" @click="openMultiVersion(t)">
                 多版本
@@ -238,6 +239,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { platformLabel, qualityLabel } from '~/utils/mediaLabels'
 import { useToast } from '~/composables/useToast'
 import { useLocalExisting } from '~/composables/useLocalExisting'
+import { usePreview } from '~/composables/usePreview'
 
 type PlaylistTrack = {
   externalId?: string
@@ -299,6 +301,11 @@ const boardEnqueueing = ref(false)
 
 const toast = useToast()
 const { check: checkExisting, isExisting, multiVersions, savePending, confirmPending, skipPending } = useLocalExisting()
+const { preview: startPreview } = usePreview()
+
+function preview(t: { title: string; artist: string; musicInfo: Record<string, any> }) {
+  startPreview({ platform: boardPlatform.value, musicInfo: t.musicInfo, title: t.title, artist: t.artist })
+}
 
 /** 预填默认设置：音质 / 歌词开关 / 歌词写入方式（与设置页一致） */
 async function loadDefaults() {

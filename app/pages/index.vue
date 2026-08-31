@@ -80,7 +80,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { formatDuration } from '~/utils/mediaLabels'
-import { usePlayer } from '~/composables/usePlayer'
+import { usePreview } from '~/composables/usePreview'
 import { useToast } from '~/composables/useToast'
 import { useDownloadEvents } from '~/composables/useDownloadEvents'
 import { useFnOsDirAuth } from '~/composables/useFnOsDirAuth'
@@ -122,7 +122,7 @@ const page = ref(1)
 const previewingId = ref('')
 const previewing = computed(() => previewingId.value !== '')
 
-const { play } = usePlayer()
+const { preview: startPreview } = usePreview()
 const toast = useToast()
 const { connect, disconnect } = useDownloadEvents()
 const { check: checkExisting, isExisting, multiVersions, savePending, confirmPending, skipPending } = useLocalExisting()
@@ -164,21 +164,14 @@ function switchPlatform(id: string) {
 async function preview(item: SearchItem) {
   previewingId.value = item.id
   try {
-    const res = await $fetch<{ url: string; quality: string; sourceName: string; degraded: boolean }>('/api/preview', {
-      method: 'POST',
-      body: { platform: platform.value, musicInfo: item.musicInfo, sourceId: item.sourceId },
-    })
-    play({
-      url: res.url,
+    await startPreview({
+      platform: platform.value,
+      musicInfo: item.musicInfo,
       title: item.title,
       artist: item.artist,
       cover: item.cover,
+      sourceId: item.sourceId,
     })
-    if (res.degraded) {
-      toast.info(`试听音质已降级：${res.quality}（${res.sourceName}）`)
-    }
-  } catch (e: any) {
-    toast.error(e?.statusMessage || e?.message || '试听取链失败')
   } finally {
     previewingId.value = ''
   }
