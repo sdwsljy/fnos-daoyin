@@ -1,10 +1,10 @@
 {
-  "version": "4.0.0",
-  "tag": "v4.0.0",
+  "version": "4.0.1",
+  "tag": "v4.0.1",
   "releasedAt": "2026-08-31T19:05:41.409Z",
-  "changelog": "- 新增：全局试听播放器（底部播放条：封面 / 歌名 / 歌手、播放暂停、可拖动进度条与时长）。\n- 新增：排行榜、歌单详情歌曲支持试听。\n- 新增：试听歌词同步显示（解析 LRC，按播放进度高亮当前行）。",
+  "changelog": "- 新增：试听音量调节。\n- 优化：试听改为速度优先（从最低音质 128k 起尝试，文件更小、加载更快）。",
   "downloads": {
-    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.0.0",
-    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.0.0/daoyin-v4.0.0.fpk"
+    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.0.1",
+    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.0.1/daoyin-v4.0.1.fpk"
   }
 }

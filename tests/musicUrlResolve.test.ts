@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { QUALITY_LADDER, buildQualityAttempts, buildGlobalQualityLadder, isHighestQuality, pickQuality, isLosslessUrlActuallyMp3 } from '../server/services/musicUrlResolve'
+import { QUALITY_LADDER, FASTEST_LADDER, buildQualityAttempts, buildGlobalQualityLadder, isHighestQuality, isFastestQuality, pickQuality, isLosslessUrlActuallyMp3 } from '../server/services/musicUrlResolve'
 
 describe('musicUrlResolve helpers', () => {
   it('has correct quality ladder', () => {
@@ -38,5 +38,32 @@ describe('musicUrlResolve helpers', () => {
     expect(isLosslessUrlActuallyMp3('flac', 'https://cdn/x.flac')).toBe(false)
     expect(isLosslessUrlActuallyMp3('flac', 'https://cdn/x')).toBe(false)
     expect(isLosslessUrlActuallyMp3('320k', 'https://cdn/x.mp3')).toBe(false)
+  })
+})
+
+describe('fastest quality（试听速度优先）', () => {
+  it('fastest ladder is ascending', () => {
+    expect(FASTEST_LADDER).toEqual(['128k', '192k', '320k', 'flac', 'flac24bit'])
+  })
+
+  it('isFastestQuality', () => {
+    expect(isFastestQuality('fastest')).toBe(true)
+    expect(isFastestQuality('highest')).toBe(false)
+    expect(isFastestQuality('128k')).toBe(false)
+  })
+
+  it('builds quality attempts ascending for fastest', () => {
+    expect(buildQualityAttempts(['128k', '320k', 'flac'], 'fastest')).toEqual(['128k', '320k', 'flac'])
+    expect(buildQualityAttempts(['320k'], 'fastest')).toEqual(['320k'])
+  })
+
+  it('builds global ladder ascending for fastest', () => {
+    expect(buildGlobalQualityLadder('fastest', [['128k', '320k'], ['flac']])).toEqual(['128k', '320k', 'flac'])
+    expect(buildGlobalQualityLadder('fastest', [['flac24bit'], ['320k']])).toEqual(['320k', 'flac24bit'])
+  })
+
+  it('fixed quality is not affected by fastest', () => {
+    expect(buildQualityAttempts(['128k', '320k'], 'flac')).toEqual(['flac'])
+    expect(buildGlobalQualityLadder('320k', [['128k'], ['flac']])).toEqual(['320k'])
   })
 })

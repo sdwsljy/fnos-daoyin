@@ -4,8 +4,15 @@ import { loadLxSource } from './sourceRuntime'
 /** 音质从高到低（highest 降级阶梯） */
 export const QUALITY_LADDER = ['flac24bit', 'flac', '320k', '192k', '128k'] as const
 
+/** 音质从低到高（fastest 速度优先阶梯：试听用，先低音质快速加载） */
+export const FASTEST_LADDER = ['128k', '192k', '320k', 'flac', 'flac24bit'] as const
+
 export function isHighestQuality(pref: string | null | undefined): boolean {
   return !pref || pref === 'highest'
+}
+
+export function isFastestQuality(pref: string | null | undefined): boolean {
+  return pref === 'fastest'
 }
 
 /** 补齐 id/songmid/hash，兼容洛雪/部分音源只认 id */
@@ -27,6 +34,12 @@ export function normalizeMusicInfo(musicInfo: Record<string, any>): Record<strin
  * - 固定音质：仅该项
  */
 export function buildQualityAttempts(available: string[], preferred: string): string[] {
+  if (isFastestQuality(preferred)) {
+    const set = new Set(available.map(String))
+    const ladder = FASTEST_LADDER.filter((q) => set.has(q))
+    if (ladder.length) return [...ladder]
+    return ['128k', '320k', 'flac']
+  }
   if (isHighestQuality(preferred)) {
     const set = new Set(available.map(String))
     const ladder = QUALITY_LADDER.filter((q) => set.has(q))
@@ -36,8 +49,17 @@ export function buildQualityAttempts(available: string[], preferred: string): st
   return [preferred]
 }
 
-/** 全局音质阶梯：highest 时取各源宣称音质并集，再按 QUALITY_LADDER 排序 */
+/** 全局音质阶梯：highest 时取各源宣称音质并集，再按 QUALITY_LADDER 排序；fastest 按 FASTEST_LADDER */
 export function buildGlobalQualityLadder(preferred: string, availableLists: string[][]): string[] {
+  if (isFastestQuality(preferred)) {
+    const union = new Set<string>()
+    for (const list of availableLists) {
+      for (const q of list) union.add(String(q))
+    }
+    const ladder = FASTEST_LADDER.filter((q) => union.has(q))
+    if (ladder.length) return [...ladder]
+    return ['128k', '320k', 'flac']
+  }
   if (!isHighestQuality(preferred)) return [preferred]
   const union = new Set<string>()
   for (const list of availableLists) {
@@ -59,9 +81,9 @@ export function orderSourcesForResolve(all: SourceRow[], sourceId?: string | nul
 export function shouldTryQualityOnSource(
   available: string[],
   quality: string,
-  highest: boolean,
+  ladder: boolean,
 ): boolean {
-  if (!highest) return true
+  if (!ladder) return true
   return available.includes(quality)
 }
 
@@ -124,6 +146,8 @@ function shortenSourceError(raw: unknown): string {
 export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<ResolveMusicUrlResult> {
   const preferred = input.quality || 'highest'
   const highest = isHighestQuality(preferred)
+  const fastest = isFastestQuality(preferred)
+  const ladder = highest || fastest
   const musicInfo = normalizeMusicInfo(input.musicInfo)
   const exclude = new Set(input.excludeSourceIds || [])
 
@@ -144,7 +168,7 @@ export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<Reso
     try {
       const handle = await loadLxSource(source.local_path)
       const available = handle.qualityMap[input.platform] || ['128k', '320k']
-      if (!highest && !available.includes(preferred)) {
+      if (!ladder && !available.includes(preferred)) {
         errors.push(`${source.name}: 未宣称支持 ${preferred}，仍尝试取链`)
       }
       loaded.push({ source, handle, available })
@@ -165,7 +189,7 @@ export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<Reso
 
   for (const q of tiers) {
     for (const { source, handle, available } of loaded) {
-      if (!shouldTryQualityOnSource(available, q, highest)) continue
+      if (!shouldTryQualityOnSource(available, q, ladder)) continue
       try {
         const url = await handle.getMusicUrl(input.platform, musicInfo, q)
         // 方案 B 辅助：请求无损（flac/flac24bit）但返回的 URL 明确指向 .mp3，
@@ -189,7 +213,7 @@ export async function resolveMusicUrl(input: ResolveMusicUrlInput): Promise<Reso
   const detail = errors.slice(0, 12).join(' | ') || '无详细错误'
   throw Object.assign(
     new Error(
-      highest
+      ladder
         ? `取链失败（已轮询 ${loaded.length} 个音源并尝试降级）：${detail}`
         : `取链失败（已轮询 ${loaded.length} 个音源）：${detail}`,
     ),

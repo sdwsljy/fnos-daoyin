@@ -9,6 +9,7 @@ export type PlayerState = {
   duration: number
   currentTime: number
   lyric: string | null
+  volume: number
 }
 
 let audioEl: HTMLAudioElement | null = null
@@ -23,11 +24,13 @@ export function usePlayer() {
     duration: 0,
     currentTime: 0,
     lyric: null,
+    volume: 1,
   }))
 
   function ensureAudio() {
     if (audioEl) return audioEl
     audioEl = new Audio()
+    audioEl.volume = player.value.volume
     audioEl.addEventListener('loadedmetadata', () => {
       player.value.duration = audioEl?.duration || 0
     })
@@ -52,6 +55,7 @@ export function usePlayer() {
       duration: 0,
       currentTime: 0,
       lyric: null,
+      volume: player.value.volume,
     }
     audio.play().catch(() => {
       player.value.playing = false
@@ -81,6 +85,13 @@ export function usePlayer() {
     player.value.lyric = lyric
   }
 
+  function setVolume(v: number) {
+    const audio = ensureAudio()
+    const vol = Math.max(0, Math.min(1, v))
+    audio.volume = vol
+    player.value.volume = vol
+  }
+
   function stop() {
     audioEl?.pause()
     if (audioEl) audioEl.src = ''
@@ -93,6 +104,7 @@ export function usePlayer() {
       duration: 0,
       currentTime: 0,
       lyric: null,
+      volume: player.value.volume,
     }
   }
 
@@ -102,6 +114,7 @@ export function usePlayer() {
     toggle,
     seek,
     setLyric,
+    setVolume,
     stop,
   }
 }

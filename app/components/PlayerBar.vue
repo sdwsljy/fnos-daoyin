@@ -19,6 +19,16 @@
         <span class="player-time">{{ fmt(player.currentTime) }} / {{ fmt(player.duration) }}</span>
       </div>
       <button class="btn-ghost" :class="{ active: showLyric }" @click="showLyric = !showLyric">歌词</button>
+      <div class="player-volume">
+        <span class="vol-icon">{{ player.volume === 0 ? '🔇' : '🔊' }}</span>
+        <input
+          type="range"
+          :value="Math.round(player.volume * 100)"
+          min="0"
+          max="100"
+          @input="onVolume($event)"
+        >
+      </div>
       <button class="btn-ghost" @click="stop">关闭</button>
     </div>
     <div v-if="showLyric" class="player-lyric">
@@ -34,7 +44,7 @@
 import { computed, ref } from 'vue'
 import { usePlayer } from '~/composables/usePlayer'
 
-const { player, toggle, seek, stop } = usePlayer()
+const { player, toggle, seek, setVolume, stop } = usePlayer()
 const showLyric = ref(false)
 
 type LyricLine = { time: number; text: string }
@@ -67,6 +77,11 @@ const activeLine = computed(() => {
 function onSeek(e: Event) {
   const v = Number((e.target as HTMLInputElement).value)
   if (Number.isFinite(v)) seek(v)
+}
+
+function onVolume(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isFinite(v)) setVolume(v / 100)
 }
 
 function fmt(sec: number) {
@@ -158,6 +173,21 @@ function fmt(sec: number) {
   font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.player-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.vol-icon {
+  font-size: 13px;
+}
+
+.player-volume input[type='range'] {
+  width: 72px;
 }
 
 .player-bar button.active {

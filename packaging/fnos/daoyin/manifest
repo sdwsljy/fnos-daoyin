@@ -1,5 +1,5 @@
 appname=daoyin
-version=4.0.0
+version=4.0.1
 display_name=盗音
 desc=多源音乐搜索、试听与下载助手（洛雪音源兼容）。支持 wy / tx / kg 歌单导入。
 platform=all
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=daoyin.main
 install_dep_apps=nodejs_v22
 ctl_stop=true
-changelog=全局试听播放器与歌词同步，排行榜、歌单支持试听。
+changelog=试听速度优先与音量调节。

@@ -1,4 +1,4 @@
-import { resolveMusicUrl, isHighestQuality } from '~~/server/services/musicUrlResolve'
+import { resolveMusicUrl } from '~~/server/services/musicUrlResolve'
 import { buildPlayUrlCacheKey, getCachedPlayUrl, setCachedPlayUrl } from '~~/server/utils/playUrlCache'
 
 export default defineEventHandler(async (event) => {
@@ -11,8 +11,8 @@ export default defineEventHandler(async (event) => {
   if (!body?.platform || !body?.musicInfo) {
     throw createError({ statusCode: 400, statusMessage: 'platform/musicInfo 必填' })
   }
-  // 试听始终用最高可用（自动降级），保证能播；下载音质选项已不提供「最高可用」
-  const qualityPref = 'highest'
+  // 试听速度优先：从低音质（128k）起尝试，文件小、加载快
+  const qualityPref = 'fastest'
 
   const songId = String(
     body.musicInfo.id || body.musicInfo.songmid || body.musicInfo.hash || body.musicInfo.songId || '',
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
       quality: cached.quality,
       sourceId: cached.sourceId,
       sourceName: cached.sourceName,
-      degraded: isHighestQuality(qualityPref) && cached.quality !== 'flac24bit' && cached.quality !== 'flac',
+      degraded: false,
     }
   }
 
@@ -47,8 +47,7 @@ export default defineEventHandler(async (event) => {
       quality: result.quality,
       sourceId: result.sourceId,
       sourceName: result.sourceName,
-      // 固定音质失败不会走到这里；highest 时可能已降级
-      degraded: isHighestQuality(qualityPref) && result.quality !== 'flac24bit' && result.quality !== 'flac',
+      degraded: false,
     }
   } catch (err: any) {
     throw createError({
