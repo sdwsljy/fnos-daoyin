@@ -1,6 +1,6 @@
 {
   "name": "daoyin",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "private": true,
   "description": "盗音（daoyin）：多平台音乐搜索、试听与高质量下载工具（洛雪音源兼容），面向飞牛 fnOS 原生应用",
@@ -11,6 +11,8 @@
     "preview": "nuxt preview --port 18980",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
+    "typecheck": "nuxt typecheck",
+    "lint": "eslint .",
     "build:fpk": "bash packaging/fnos/scripts/build-fpk.sh",
     "release": "bash scripts/release.sh"
   },
@@ -26,8 +28,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
     "@types/better-sqlite3": "^9.6.0",
-    "vitest": "^4.1.10"
+    "eslint": "^10.9.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.11"
   },
   "packageManager": "pnpm@10.28.0",
   "engines": {

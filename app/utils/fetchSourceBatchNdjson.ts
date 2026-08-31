@@ -46,7 +46,7 @@ export async function fetchSourceBatchNdjson(
     const decoder = new TextDecoder()
     let buffer = ''
     let doneResult: SourceBatchResult | null = null
-    // eslint-disable-next-line no-constant-condition
+     
     while (true) {
       const { done, value } = await reader.read()
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done })

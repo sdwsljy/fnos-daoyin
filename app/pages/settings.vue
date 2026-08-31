@@ -16,7 +16,7 @@
         <h3>下载</h3>
         <div class="field">
           <label>下载目录</label>
-          <input v-model="form.downloadDir" type="text" />
+          <input v-model="form.downloadDir" type="text" >
           <p class="hint">
             {{ fnos ? `下载模式：${fnos.downloadMode === 'custom' ? '自定义' : '共享目录'}` : '本地开发环境' }}
           </p>
@@ -48,31 +48,31 @@
         </div>
         <div class="field">
           <label>并发数</label>
-          <input v-model.number="form.concurrency" type="number" min="1" max="20" />
+          <input v-model.number="form.concurrency" type="number" min="1" max="20" >
         </div>
         <div class="field-row">
           <div class="field">
             <label>任务启动间隔（秒）</label>
-            <input v-model.number="form.taskStartIntervalSec" type="number" min="0" max="120" />
+            <input v-model.number="form.taskStartIntervalSec" type="number" min="0" max="120" >
           </div>
           <div class="field">
             <label>下载间隔（秒）</label>
-            <input v-model.number="form.downloadIntervalSec" type="number" min="0" max="120" />
+            <input v-model.number="form.downloadIntervalSec" type="number" min="0" max="120" >
           </div>
         </div>
         <div class="field">
           <label>最大重试次数</label>
-          <input v-model.number="form.maxAttempts" type="number" min="1" max="8" />
+          <input v-model.number="form.maxAttempts" type="number" min="1" max="8" >
         </div>
         <label class="checkbox">
-          <input v-model="form.autoFailover" type="checkbox" /> 失败自动换源
+          <input v-model="form.autoFailover" type="checkbox" > 失败自动换源
         </label>
       </div>
 
       <div class="card section">
         <h3>歌词</h3>
         <label class="checkbox">
-          <input v-model="form.downloadLyric" type="checkbox" /> 下载歌词
+          <input v-model="form.downloadLyric" type="checkbox" > 下载歌词
         </label>
         <div class="field">
           <label>歌词模式</label>
@@ -87,7 +87,7 @@
         <h3>文件命名</h3>
         <div class="field">
           <label>命名模板</label>
-          <input v-model="form.nameTemplate" type="text" />
+          <input v-model="form.nameTemplate" type="text" >
           <p class="hint">
             可用变量：{{ templateVars.map((v) => v.key).join(' ') }}
           </p>

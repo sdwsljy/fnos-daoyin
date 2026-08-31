@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+import { searchPlatform } from '../server/services/platformSearch'
+import { matchPlaylistTracks } from '../server/services/playlistService'
+
 // mock searchPlatform 以隔离网络
 vi.mock('../server/services/platformSearch', () => ({
   searchPlatform: vi.fn(),
 }))
-
-import { searchPlatform } from '../server/services/platformSearch'
-import { matchPlaylistTracks } from '../server/services/playlistService'
 
 const mockSearchPlatform = searchPlatform as unknown as ReturnType<typeof vi.fn>
 

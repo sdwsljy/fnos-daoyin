@@ -48,7 +48,8 @@ export function useLocalExisting() {
       const map = new Map<string, CheckResult>()
       for (const r of data.results || []) map.set(keyOf(r), r)
       existing.value = map
-    } catch {
+    } catch (e: any) {
+      console.warn('[daoyin] 本地预检失败：', e?.statusMessage || e?.message || e)
       existing.value = new Map()
     } finally {
       checking.value = false
@@ -91,7 +92,8 @@ export function useLocalExisting() {
         },
       })
       return data.tasks?.[0]?.id || null
-    } catch {
+    } catch (e: any) {
+      console.warn('[daoyin] 多版本入待确认失败：', e?.statusMessage || e?.message || e)
       return null
     }
   }

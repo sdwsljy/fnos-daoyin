@@ -64,7 +64,7 @@ export function parseLooseJson(raw: string): any {
     try {
       return JSON.parse(normalized)
     } catch (err: any) {
-      throw new Error(`响应不是合法 JSON: ${err?.message || err}`)
+      throw new Error(`响应不是合法 JSON: ${err?.message || err}`, { cause: err })
     }
   }
 }
@@ -85,7 +85,7 @@ export function cleanArtist(raw: string) {
   // 去掉「名- / 后缀」或「名-/后缀」
   s = s.replace(/\s*-\s*\/\s*.+$/, '')
   // 去掉末尾孤立的 - /
-  s = s.replace(/[\s\-\/]+$/g, '')
+  s = s.replace(/[\s\-/]+$/g, '')
   // 合并多余分隔
   s = s.replace(/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim()
   return s || '未知'

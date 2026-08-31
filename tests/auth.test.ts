@@ -14,7 +14,7 @@ describe('session crypto', () => {
 
   it('rejects tampered payload', () => {
     const token = createSessionToken('secret')
-    const [payload, sig] = token.split('.')
+    const [, sig] = token.split('.')
     const tampered = `${Buffer.from('{"exp":9999999999999}').toString('base64url')}.${sig}`
     expect(verifySession(tampered, 'secret')).toBeNull()
   })

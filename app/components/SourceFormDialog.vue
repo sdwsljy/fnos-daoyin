@@ -5,15 +5,15 @@
         <h3>{{ source ? '编辑音源' : '新增音源' }}</h3>
         <div class="field">
           <label>名称</label>
-          <input v-model="name" type="text" placeholder="音源名称" />
+          <input v-model="name" type="text" placeholder="音源名称" >
         </div>
         <div class="field">
           <label>URL</label>
-          <input v-model="url" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" />
+          <input v-model="url" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" >
         </div>
         <div class="field">
           <label>镜像 URL（可选）</label>
-          <input v-model="mirrorUrl" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" />
+          <input v-model="mirrorUrl" type="text" placeholder="https://…" :disabled="!!source" :title="source ? '编辑态不支持修改 URL' : ''" >
         </div>
         <div class="dialog-actions">
           <button class="btn-secondary" @click="emit('close')">取消</button>

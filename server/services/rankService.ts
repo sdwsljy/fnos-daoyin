@@ -206,7 +206,7 @@ async function fetchKgRankJson(url: string): Promise<any> {
   })
   // 酷狗反爬：JSON 被 HTML 注释包裹，需剥离
   const m = text.match(/<!--KG_TAG_RES_START-->([\s\S]*?)<!--KG_TAG_RES_END-->/)
-  return parseLooseJson(m ? m[1] : text)
+  return parseLooseJson(m?.[1] ?? text)
 }
 
 async function getKgTracks(boardId: string, page: number): Promise<{ items: RankTrack[]; hasMore: boolean }> {

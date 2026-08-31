@@ -1,10 +1,10 @@
 {
-  "version": "2.0.0",
-  "tag": "v2.0.0",
+  "version": "3.0.0",
+  "tag": "v3.0.0",
   "releasedAt": "2026-08-30T13:08:32.813Z",
-  "changelog": "- 新增：下载列表「已下载」改为按磁盘真实文件数统计（记录按 file_path 去重且文件存在才计数），消除「软件已下载数」与「实际文件数」不一致。\n- 新增：启动时与每 10 分钟自动校验「已完成/已存在」记录对应文件是否仍在（自愈标记），文件丢失时顶部提示并可一键清理；缺失文件在下载列表单独「文件缺失」筛选列出并归类原因。\n- 新增：本地文件对账。扫描下载目录与记录双向对比，列出「匹配 / 缺失 / 疑似改名 / 孤儿文件 / 共享文件」五类差异；支持一键重新关联改名文件、删除孤儿文件、清理共享重复记录。\n- 新增：下载前预检本地文件。搜索 / 排行榜 / 歌单广场列表直接标注「已下载」，已存在歌曲不再重复入队；批量入队自动跳过已存在并提示数量。\n- 新增：音乐多版本。下载前预检区分「同名同歌手（已下载）/ 同名不同歌手（多版本）/ 无」，同名不同歌手不再误判为已存在；列表显示「多版本」按钮，弹窗列出本地已有版本供选择。\n- 新增：多版本待确认持久化。多版本弹窗无人处理（关闭窗口 / 待会再说）时，歌曲保留在下载列表「待确认」区，可随时确认下载或跳过；批量入队遇到多版本自动加入待确认。",
+  "changelog": "- 工程质量：TypeScript 类型检查 52 处错误清零、ESLint 24 处问题清零，新增 typecheck / lint 门禁。\n- 安全：歌词抓取接入 safeFetch，SSRF 加固覆盖音源脚本、歌单解析、封面、歌词全部出口。\n- 修复：关键路径静默失败改为可见日志（本地预检、多版本入待确认、统计/对账/音源加载等）。\n- 修复：消除 file_path 可空类型等历史类型隐患，音源脚本逃逸 payload 拦截、熔断与自愈异步化等健壮性完善。",
   "downloads": {
-    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v2.0.0",
-    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v2.0.0/daoyin-v2.0.0.fpk"
+    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v3.0.0",
+    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v3.0.0/daoyin-v3.0.0.fpk"
   }
 }

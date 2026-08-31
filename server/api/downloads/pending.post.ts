@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
       externalId?: string | null
       versions?: Array<{ name: string; path: string; size: number }>
     }>
-  }>()
+  }>(event)
   const items = Array.isArray(body?.items) ? body.items : []
   if (!items.length) {
     throw createError({ statusCode: 400, statusMessage: 'items 必填' })

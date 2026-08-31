@@ -7,7 +7,7 @@ import { openSync, readSync, closeSync, existsSync } from 'node:fs'
 export function sniffAudioExt(filePath: string): string | null {
   if (!existsSync(filePath)) return null
   const buf = Buffer.alloc(16)
-  let n = 0
+  let n: number
   try {
     const fd = openSync(filePath, 'r')
     try {

@@ -39,7 +39,7 @@
           </select>
         </label>
         <label class="checkbox">
-          <input v-model="downloadLyric" type="checkbox" /> 歌词
+          <input v-model="downloadLyric" type="checkbox" > 歌词
         </label>
         <label v-if="downloadLyric" class="checkbox">
           写入方式
@@ -236,7 +236,8 @@ async function enqueueAll() {
         },
       })
       pendingCount = data.count || 0
-    } catch {
+    } catch (e: any) {
+      console.warn('[daoyin] 多版本入待确认失败：', e?.statusMessage || e?.message || e)
       pendingCount = 0
     }
   }

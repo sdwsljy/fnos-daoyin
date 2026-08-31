@@ -28,7 +28,7 @@
         </button>
       </div>
       <form class="search-form" @submit.prevent="doSearch">
-        <input v-model="keyword" type="search" placeholder="搜索歌曲 / 歌手 / 专辑" />
+        <input v-model="keyword" type="search" placeholder="搜索歌曲 / 歌手 / 专辑" >
         <button type="submit" :disabled="searching">搜索</button>
       </form>
     </div>
@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { platformLabel, formatDuration } from '~/utils/mediaLabels'
+import { formatDuration } from '~/utils/mediaLabels'
 import { usePlayer } from '~/composables/usePlayer'
 import { useToast } from '~/composables/useToast'
 import { useDownloadEvents } from '~/composables/useDownloadEvents'

@@ -1,32 +1,6 @@
 import { decodeKrcBase64 } from '../utils/krcDecode'
 import { decryptTxFieldToLrc } from '../utils/txQrc'
-import { assertSafePublicUrl } from '../utils/ssrfGuard'
-
-async function fetchText(
-  url: string,
-  opts?: { headers?: Record<string, string>; method?: string; body?: string },
-): Promise<string | null> {
-  const controller = new AbortController()
-  const t = setTimeout(() => controller.abort(), 12000)
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      method: opts?.method || 'GET',
-      body: opts?.body,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        ...opts?.headers,
-      },
-    })
-    if (!res.ok) return null
-    return await res.text()
-  } catch {
-    return null
-  } finally {
-    clearTimeout(t)
-  }
-}
+import { safeFetch } from '../utils/ssrfGuard'
 
 async function fetchJson(url: string, headers: Record<string, string> = {}, init?: RequestInit) {
   const controller = new AbortController()
@@ -331,30 +305,39 @@ async function fetchKg(musicInfo: Record<string, any>): Promise<string | null> {
   }
 }
 
+/** 安全抓取歌词文本：safeFetch（IP 直连 + 逐跳校验）防 SSRF，失败返回 null */
+async function fetchLyricTextSafe(url: string): Promise<string | null> {
+  try {
+    const res = await safeFetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: 'https://music.migu.cn/',
+      },
+      redirect: 'follow',
+      timeoutMs: 12000,
+    })
+    if (!res.ok) return null
+    return await res.text()
+  } catch {
+    return null
+  }
+}
+
 async function fetchMg(musicInfo: Record<string, any>): Promise<string | null> {
   const lrcUrl = musicInfo.lrcUrl || musicInfo.lrc_url
   const trcUrl = musicInfo.trcUrl || musicInfo.trc_url
   const mrcUrl = musicInfo.mrcUrl || musicInfo.mrc_url
   let lyric = ''
   if (lrcUrl) {
-    try {
-      await assertSafePublicUrl(String(lrcUrl))
-      lyric = (await fetchText(String(lrcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
-    } catch {
-      lyric = ''
-    }
+    lyric = (await fetchLyricTextSafe(String(lrcUrl))) || ''
   } else if (mrcUrl) {
     // mg MRC 需专用解密；无密钥时跳过，避免写入乱码
     lyric = ''
   }
   let trans = ''
   if (trcUrl) {
-    try {
-      await assertSafePublicUrl(String(trcUrl))
-      trans = (await fetchText(String(trcUrl), { headers: { Referer: 'https://music.migu.cn/' } })) || ''
-    } catch {
-      trans = ''
-    }
+    trans = (await fetchLyricTextSafe(String(trcUrl))) || ''
   }
   const merged = mergeBilingualLyrics(lyric, trans)
   return merged || null

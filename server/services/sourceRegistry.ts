@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { writeFileSync, unlinkSync, existsSync, readFileSync } from 'node:fs'
 import { getDb } from '../utils/db'
 import { getSourceCachePath } from '../utils/paths'
-import { assertSafePublicUrl } from '../utils/ssrfGuard'
+import { safeFetch } from '../utils/ssrfGuard'
 import { allocateUniqueName, cleanSourceName, parseSourceText } from './sourceImport'
 import { probeLocalScript } from './sourceProbe'
 import type { SourceBatchHandlers, SourceProgressReporter } from '#shared/sourceBatchProgress'
@@ -81,19 +81,11 @@ function existingNameSet(): Set<string> {
 export async function fetchSourceScript(url: string): Promise<string> {
   let current = String(url || '').trim()
   for (let i = 0; i < 3; i++) {
-    await assertSafePublicUrl(current)
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20000)
-    let res: Response
-    try {
-      res = await fetch(current, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'daoyin/1.0' },
-        redirect: 'manual',
-      })
-    } finally {
-      clearTimeout(timer)
-    }
+    const res = await safeFetch(current, {
+      headers: { 'User-Agent': 'daoyin/1.0' },
+      redirect: 'manual',
+      timeoutMs: 20000,
+    })
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location')
       if (!loc) break

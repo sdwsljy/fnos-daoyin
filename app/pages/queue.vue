@@ -10,7 +10,7 @@
         type="search"
         class="queue-search"
         placeholder="搜索歌名 / 歌手 / 文件名"
-      />
+      >
       <span class="counts">
         已下载文件 {{ stats?.files ?? '…' }} / 记录 {{ recordCount }} / 下载中 {{ counts.running }} / 失败 {{ counts.failed }}
       </span>
@@ -100,9 +100,9 @@
 
     <div v-if="!filteredTasks.length" class="empty">{{ searchQuery ? '未找到匹配的任务' : `暂无${filterLabel}任务` }}</div>
 
-    <div class="batch-bar" v-if="filteredTasks.length">
+    <div v-if="filteredTasks.length" class="batch-bar">
       <label class="check">
-        <input type="checkbox" :checked="allSelected" @change="toggleAll" /> 全选
+        <input type="checkbox" :checked="allSelected" @change="toggleAll" > 全选
       </label>
       <template v-if="selectedCount">
         <template v-if="filter === 'downloading'">
@@ -114,6 +114,7 @@
         <template v-else-if="filter === 'failed'">
           <button class="btn-secondary" @click="batchRetry">批量重试（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchSwitchSource">批量换源（{{ selectedCount }}）</button>
+          <button class="btn-secondary" @click="batchSwitchQuality">批量换音质（{{ selectedCount }}）</button>
           <button class="btn-secondary" @click="batchDelete">批量删除（{{ selectedCount }}）</button>
         </template>
         <template v-else-if="filter === 'existing'">
@@ -142,7 +143,7 @@
 
     <div v-for="t in filteredTasks" :key="t.id" class="task card" :class="`task-${t.status}`">
       <label class="task-check">
-        <input type="checkbox" :checked="selected.has(t.id)" @change="toggleOne(t.id, ($event.target as HTMLInputElement).checked)" />
+        <input type="checkbox" :checked="selected.has(t.id)" @change="toggleOne(t.id, ($event.target as HTMLInputElement).checked)" >
       </label>
       <div class="task-main">
         <div class="task-title">{{ t.title }}</div>
@@ -151,7 +152,7 @@
           · {{ platformLabel(t.platform) }} · {{ qualityLabel(t.quality) }}
         </div>
         <div v-if="t.status === 'running'" class="progress-track">
-          <div class="progress-fill" :style="{ width: formatPercent(t.progress) }"></div>
+          <div class="progress-fill" :style="{ width: formatPercent(t.progress) }"/>
         </div>
         <div v-if="t.status === 'running'" class="progress-info">
           {{ formatBytes(t.file_size) }}
@@ -232,9 +233,11 @@
       @confirm="doSwitchSource"
     />
     <SwitchQualityDialog
-      v-if="switchQualityTarget"
+      v-if="switchQualityTarget || batchSwitchQualityTargets.length"
       :task="switchQualityTarget"
-      @close="switchQualityTarget = null"
+      :batch="batchSwitchQualityTargets.length > 0"
+      :count="batchSwitchQualityTargets.length || 1"
+      @close="switchQualityTarget = null; batchSwitchQualityTargets = []"
       @confirm="doSwitchQuality"
     />
     <ManualMatchDialog
@@ -360,6 +363,7 @@ const switchSourceTarget = ref<DownloadTask | null>(null)
 const switchQualityTarget = ref<DownloadTask | null>(null)
 const manualMatchTarget = ref<DownloadTask | null>(null)
 const batchSwitchSourceTargets = ref<DownloadTask[]>([])
+const batchSwitchQualityTargets = ref<DownloadTask[]>([])
 
 const sourcesCache = ref<Array<{ id: string; name: string; platform: string; status: string }>>([])
 const sourcesByPlatform = computed(() => {
@@ -405,8 +409,8 @@ const recordCount = computed(() => {
 async function loadStats() {
   try {
     stats.value = await $fetch('/api/downloads/stats')
-  } catch {
-    /* ignore */
+  } catch (e: any) {
+    console.warn('[daoyin] 统计加载失败：', e?.statusMessage || e?.message || e)
   }
 }
 
@@ -439,8 +443,8 @@ async function loadMissing() {
   try {
     const data = await $fetch<{ items: MissingItem[] }>('/api/downloads/missing')
     missingItems.value = data.items || []
-  } catch {
-    /* ignore */
+  } catch (e: any) {
+    console.warn('[daoyin] 缺失文件加载失败：', e?.statusMessage || e?.message || e)
   }
 }
 
@@ -790,6 +794,10 @@ async function doManualMatch(payload: {
 }
 
 async function doSwitchQuality(quality: string) {
+  if (batchSwitchQualityTargets.value.length) {
+    await doBatchSwitchQuality(quality)
+    return
+  }
   const t = switchQualityTarget.value
   if (!t) return
   try {
@@ -797,6 +805,32 @@ async function doSwitchQuality(quality: string) {
     toast.success('已换音质并重新下载')
   } catch (e: any) {
     toast.error(e?.statusMessage || '换音质失败')
+  }
+}
+
+function batchSwitchQuality() {
+  if (!selectedCount.value) return
+  batchSwitchQualityTargets.value = filteredTasks.value.filter((t) => selected.value.has(t.id))
+  switchQualityTarget.value = null
+}
+
+async function doBatchSwitchQuality(quality: string) {
+  const targets = batchSwitchQualityTargets.value
+  if (!targets.length) return
+  try {
+    const res = await $fetch<{ items: Array<{ error?: string }> }>('/api/downloads/batch-switch-quality', {
+      method: 'POST',
+      body: { ids: targets.map((t) => t.id), quality },
+    })
+    const ok = res.items.filter((i) => !i.error).length
+    const fail = res.items.length - ok
+    selected.value = new Set()
+    batchSwitchQualityTargets.value = []
+    if (fail) toast.warning(`批量换音质：成功 ${ok}，失败 ${fail}`)
+    else toast.success(`批量换音质：成功 ${ok}`)
+    refresh()
+  } catch (e: any) {
+    toast.error(e?.statusMessage || '批量换音质失败')
   }
 }
 
@@ -811,8 +845,8 @@ async function loadSources() {
         status: s.status,
       })),
     )
-  } catch {
-    /* ignore */
+  } catch (e: any) {
+    console.warn('[daoyin] 音源加载失败：', e?.statusMessage || e?.message || e)
   }
 }
 

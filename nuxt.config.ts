@@ -8,6 +8,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   future: { compatibilityVersion: 4 },
   devtools: { enabled: true },
+  modules: ['@nuxt/eslint'],
   css: ['~/assets/css/main.css'],
   app: {
     // 飞牛统一网关下为 /app/daoyin/；本地默认为 /

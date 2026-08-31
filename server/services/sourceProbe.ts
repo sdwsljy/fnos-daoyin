@@ -6,7 +6,7 @@ import {
   type LxSourceHandle,
 } from './sourceRuntime'
 import { withTimeout } from '../utils/sourceBatchTimeout'
-import { type SourceLogReporter } from '#shared/sourceBatchProgress'
+import type { SourceLogReporter } from '#shared/sourceBatchProgress'
 
 /** 探针优先尝试的平台顺序 */
 export const PROBE_PLATFORM_ORDER = ['wy', 'kw', 'kg', 'tx', 'mg'] as const

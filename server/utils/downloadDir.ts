@@ -1,4 +1,4 @@
-import { accessSync, constants, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, mkdirSync, unlinkSync, writeFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { resolveDownloadDir } from './paths'
@@ -15,6 +15,24 @@ export function isDownloadPermissionError(err: unknown): boolean {
 
 export function formatDownloadPermissionMessage(resolved: string) {
   return `无下载目录写入权限: ${resolved}（Docker/飞牛请检查卷挂载与目录属主是否可写）`
+}
+
+/** 清理历史残留的写探针文件（杀软/进程异常退出导致 unlink 失败时残留） */
+export function cleanupStaleWriteProbes(dir: string) {
+  const resolved = resolveDownloadDir(dir)
+  try {
+    const entries = readdirSync(resolved)
+    for (const e of entries) {
+      if (!e.startsWith('.daoyin-write-probe-')) continue
+      try {
+        unlinkSync(join(resolved, e))
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**

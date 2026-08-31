@@ -111,7 +111,7 @@ function shortenSourceError(raw: unknown): string {
   }
   const codeMatch = m.match(/"code"\s*:\s*(\d{6})/)
   if (codeMatch && codeHint[codeMatch[1]!]) {
-    return codeHint[codeMatch[1]!]
+    return codeHint[codeMatch[1]!]!
   }
   const braceIdx = m.indexOf('{')
   let out = braceIdx >= 0 ? m.slice(0, braceIdx).trim() : m

@@ -5,7 +5,7 @@
       <h1>盗音</h1>
       <p class="dim">输入访问口令以继续</p>
       <form @submit.prevent="submit">
-        <input v-model="password" type="password" placeholder="访问口令" autofocus />
+        <input v-model="password" type="password" placeholder="访问口令" autofocus >
         <button type="submit" :disabled="loading" class="login-btn">
           {{ loading ? '登录中…' : '登录' }}
         </button>

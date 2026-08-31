@@ -6,8 +6,7 @@ import { Script, createContext, runInContext } from 'node:vm'
 import { request as httpRequest } from 'node:https'
 import { request as httpRequestPlain } from 'node:http'
 import { URL } from 'node:url'
-import { promisify } from 'node:util'
-import { inspect } from 'node:util'
+import { promisify, inspect  } from 'node:util'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { SourceLogLevel } from '#shared/sourceBatchProgress'
 
@@ -108,6 +107,20 @@ const BLOCKED_REQUIRE = new Set([
   'vm',
   'node:vm',
 ])
+
+/**
+ * node:vm 非安全边界，脚本可通过宿主对象 constructor 链回宿主 realm 逃逸。
+ * 这里在加载前扫描已知的逃逸 payload，命中即拒绝（提高攻击门槛）。
+ * require 类危险模块已在沙箱 createRestrictedRequire 内拦截，此处不再重复。
+ * 彻底隔离需 isolated-vm 或独立进程，属后续里程碑。
+ */
+const DANGEROUS_PATTERNS: Array<{ re: RegExp; desc: string }> = [
+  { re: /\.constructor\s*\(/, desc: 'constructor 逃逸' },
+  { re: /constructor\s*\.\s*constructor/, desc: 'Function 构造器逃逸' },
+  { re: /process\.mainModule/, desc: 'process.mainModule 访问' },
+  { re: /process\.binding\b/, desc: 'process.binding 访问' },
+  { re: /process\._linkedBinding/, desc: 'process._linkedBinding 访问' },
+]
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout
@@ -488,6 +501,10 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
   if (code.length > 2 * 1024 * 1024) {
     throw new Error('音源脚本过大，拒绝加载')
   }
+  const dangerous = DANGEROUS_PATTERNS.find((p) => p.re.test(code))
+  if (dangerous) {
+    throw new Error(`音源脚本含危险代码（${dangerous.desc}），已拒绝加载`)
+  }
 
   const handlers: Array<(payload: any) => any> = []
   const updateAlerts: string[] = []
@@ -629,7 +646,7 @@ export async function loadLxSource(localPath: string, opts?: { bypassCache?: boo
     rejectionGuard.release()
     recordFailure(localPath)
     if (String(err?.message || err).includes('Script execution timed out')) {
-      throw new Error('音源脚本初始化超时（疑似死循环）')
+      throw new Error('音源脚本初始化超时（疑似死循环）', { cause: err })
     }
     throw err
   }

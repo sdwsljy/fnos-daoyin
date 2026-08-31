@@ -1,6 +1,5 @@
 import { cleanupDeadSources } from '~~/server/services/sourceRegistry'
-import { runNdjsonBatch } from '~~/server/utils/ndjsonStream'
-import { wantsSourceBatchStream } from '~~/server/utils/ndjsonStream'
+import { runNdjsonBatch, wantsSourceBatchStream  } from '~~/server/utils/ndjsonStream'
 
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
@@ -14,7 +13,7 @@ export default defineEventHandler(async (event) => {
           await send({ type: 'progress', ...p })
         },
       })
-      return { type: 'done', ...result }
+      return { type: 'done', total: result.count, ...result }
     })
   }
 

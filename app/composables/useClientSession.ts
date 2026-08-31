@@ -12,7 +12,7 @@ export function useClientSession() {
       const data = await $fetch<ClientSession>('/api/auth/me')
       session.value = data
     } catch {
-      session.value = { authenticated: false, session: null }
+      session.value = { authRequired: false, authenticated: false, session: null }
     }
   }
 

@@ -58,6 +58,11 @@ export function useDownloadEvents() {
     es.addEventListener('task', (e) => {
       try {
         const task = JSON.parse((e as MessageEvent).data) as DownloadTask
+        // 删除事件：直接从列表移除，避免残留「deleted」幽灵任务
+        if (task.status === 'deleted') {
+          tasks.value = tasks.value.filter((t) => t.id !== task.id)
+          return
+        }
         const idx = tasks.value.findIndex((t) => t.id === task.id)
         if (idx >= 0) {
           const prev = tasks.value[idx]

@@ -213,25 +213,52 @@ export function computeDownloadStats(): DownloadStats {
  * 文件在软件之外被删除后，这里会持续把失效记录标出来，供统计与清理使用。
  * 返回最新统计。
  */
-export function reconcileDownloadState(): DownloadStats {
+export async function reconcileDownloadState(): Promise<DownloadStats> {
   const db = getDb()
+  const settings = getSettings()
+  // 先扫描下载目录，得到存在的文件路径集合；下载目录内的记录用内存集合判断，避免逐条 existsSync
+  const downloadDir = resolveDownloadDir(settings.downloadDir)
+  const filePathSet = new Set(scanDownloadDir(settings.downloadDir).map((f) => f.path))
   const rows = db
     .prepare(
       `SELECT id, file_path FROM download_tasks WHERE status IN ('completed','existing') AND file_path IS NOT NULL`,
     )
     .all() as Array<{ id: string; file_path: string }>
+
+  const updates: Array<{ id: string; missing: number }> = []
+  for (const r of rows) {
+    const fp = r.file_path
+    let exists: boolean
+    if (fp.startsWith(downloadDir + sep)) {
+      // 下载目录内的音频文件：scan 已全量覆盖，直接用集合判断
+      exists = filePathSet.has(fp)
+    } else {
+      // 目录外（历史迁移路径等）：逐条 existsSync
+      exists = existsSync(fp)
+    }
+    updates.push({ id: r.id, missing: exists ? 0 : 1 })
+    // 分批让出事件循环，避免大批量时长时间阻塞
+    if (updates.length % 500 === 0) {
+      await new Promise<void>((r) => setImmediate(r))
+    }
+  }
+
   const update = db.prepare(`UPDATE download_tasks SET file_missing=? WHERE id=?`)
   const tx = db.transaction((items: Array<{ id: string; missing: number }>) => {
     for (const it of items) update.run(it.missing, it.id)
   })
-  tx(rows.map((r) => ({ id: r.id, missing: existsSync(r.file_path) ? 0 : 1 })))
+  tx(updates)
   return computeDownloadStats()
 }
 
 /** 清理文件已丢失的 completed/existing 记录（不删文件，因其本就不存在） */
 export function deleteMissingFileRecords(): number {
-  const info = getDb().prepare(`DELETE FROM download_tasks WHERE file_missing = 1`).run()
-  return info.changes
+  const db = getDb()
+  const ids = db.prepare(`SELECT id FROM download_tasks WHERE file_missing = 1`).all() as Array<{ id: string }>
+  if (!ids.length) return 0
+  db.prepare(`DELETE FROM download_tasks WHERE file_missing = 1`).run()
+  for (const { id } of ids) downloadEvents.emit('task', { id, status: 'deleted' })
+  return ids.length
 }
 
 const AUDIO_EXTS = ['flac', 'mp3', 'm4a', 'ape', 'ogg', 'wav', 'aac']
@@ -244,7 +271,7 @@ export function classifyMissingFile(filePath: string): MissingFileReason {
   if (!existsSync(dir)) return 'dir_missing'
   const ext = extname(filePath).replace(/^\./, '').toLowerCase()
   const stem = basename(filePath, extname(filePath))
-  let entries: string[] = []
+  let entries: string[]
   try {
     entries = readdirSync(dir)
   } catch {
@@ -285,8 +312,14 @@ export type LocalAudioFile = {
 }
 
 /** 扫描下载目录（非递归），返回音频文件清单，忽略歌词/临时/备份文件 */
+let scanCache: { dir: string; files: LocalAudioFile[]; at: number } | null = null
+const SCAN_CACHE_TTL_MS = 30 * 1000
+
 export function scanDownloadDir(downloadDir?: string): LocalAudioFile[] {
   const dir = resolveDownloadDir(downloadDir)
+  if (scanCache && scanCache.dir === dir && Date.now() - scanCache.at < SCAN_CACHE_TTL_MS) {
+    return scanCache.files
+  }
   let entries: string[]
   try {
     entries = readdirSync(dir)
@@ -311,7 +344,13 @@ export function scanDownloadDir(downloadDir?: string): LocalAudioFile[] {
       /* ignore */
     }
   }
+  scanCache = { dir, files: out, at: Date.now() }
   return out
+}
+
+/** 清空目录扫描缓存（下载落盘/测试时调用，使新文件立即可见） */
+export function invalidateScanCache() {
+  scanCache = null
 }
 
 export type ExistingCheckItem = {
@@ -339,7 +378,7 @@ export type ExistingCheckResult = {
 export function checkExistingLocal(items: ExistingCheckItem[]): { results: ExistingCheckResult[] } {
   const settings = getSettings()
   const files = scanDownloadDir(settings.downloadDir)
-  const results = items.map((item) => {
+  const results = items.map((item): ExistingCheckResult => {
     const base = applyNameTemplate(settings.nameTemplate, {
       artist: item.artist,
       title: item.title,
@@ -482,7 +521,7 @@ export function diffLocalFiles(downloadDir?: string): ReconcileResult {
   const shared: ReconcileShared[] = []
   for (const [path, recs] of validByPath) {
     if (recs.length <= 1) continue
-    let size = 0
+    let size: number
     try {
       size = statSync(path).size
     } catch {
@@ -579,13 +618,14 @@ export function dedupeSharedRecords(): { deleted: number; files: number } {
       if (sa !== sb) return sa - sb
       return a.created_at.localeCompare(b.created_at)
     })
-    for (let i = 1; i < sorted.length; i++) deleteIds.push(sorted[i].id)
+    for (let i = 1; i < sorted.length; i++) deleteIds.push(sorted[i]!.id)
   }
   const del = getDb().prepare(`DELETE FROM download_tasks WHERE id = ?`)
   const tx = getDb().transaction((ids: string[]) => {
     for (const id of ids) del.run(id)
   })
   tx(deleteIds)
+  for (const id of deleteIds) downloadEvents.emit('task', { id, status: 'deleted' })
   return { deleted: deleteIds.length, files: validByPath.size }
 }
 
@@ -608,7 +648,7 @@ export function relinkTaskFile(id: string, newPath: string, downloadDir?: string
   if (!existsSync(full)) {
     throw createError({ statusCode: 400, statusMessage: '目标文件不存在' })
   }
-  let size: number | null = null
+  let size: number | null
   try {
     size = statSync(full).size
   } catch {
@@ -774,7 +814,7 @@ function detectExistingFile(opts: {
     downloadDir: opts.downloadDir,
   })
   if (!existingFile) return null
-  let size: number | null = null
+  let size: number | null
   try {
     size = statSync(existingFile).size
   } catch {
@@ -1094,7 +1134,7 @@ export function switchQualityAndRetry(id: string, quality: string) {
   if (task.status === 'running' || task.status === 'queued') {
     throw createError({ statusCode: 400, statusMessage: '任务进行中，请先取消再换音质' })
   }
-  const allowed = new Set(['highest', 'flac24bit', 'flac', '320k', '128k'])
+  const allowed = new Set(['highest', 'flac24bit', 'flac', '320k', '192k', '128k'])
   if (!allowed.has(quality)) {
     throw createError({ statusCode: 400, statusMessage: `不支持的音质: ${quality}` })
   }
@@ -1126,6 +1166,20 @@ export function batchRetryTasks(ids: string[], opts?: { resetAttempts?: boolean 
       items.push(retryTask(id, opts))
     } catch (e: any) {
       items.push({ id, error: e?.message || String(e) })
+    }
+  }
+  kickWorker()
+  return { count: ids.length, items }
+}
+
+/** 批量换音质：对每个任务换音质并重新入队下载 */
+export function batchSwitchQuality(ids: string[], quality: string) {
+  const items = []
+  for (const id of ids) {
+    try {
+      items.push(switchQualityAndRetry(id, quality))
+    } catch (e: any) {
+      items.push({ id, error: e?.statusMessage || e?.message || String(e) })
     }
   }
   kickWorker()
@@ -1166,7 +1220,7 @@ export function switchSourceAndRetry(id: string, opts?: { sourceId?: string }) {
     throw createError({ statusCode: 400, statusMessage: `没有可用音源（平台 ${task.platform}）` })
   }
 
-  let musicInfo: Record<string, any> = {}
+  let musicInfo: Record<string, any>
   try {
     musicInfo = JSON.parse(task.music_info_json || '{}')
   } catch {
@@ -1282,7 +1336,7 @@ export function manualMatchTask(
     removeTaskFiles(task)
   }
 
-  let prevMusicInfo: Record<string, any> = {}
+  let prevMusicInfo: Record<string, any>
   try {
     prevMusicInfo = JSON.parse(task.music_info_json || '{}')
   } catch {
@@ -1386,14 +1440,14 @@ async function tryCrossPlatform(
       platform: task.platform,
     })
     if (!result.crossPlatform || !result.matched.selected?.musicInfo) return null
-    const sel = result.matched.selected
+    const sel = result.matched.selected!
     const resolved = await resolveMusicUrl({
       platform: result.matchPlatform,
-      musicInfo: sel.musicInfo,
+      musicInfo: sel.musicInfo!,
       quality: qualityPref,
     })
     reasons.push(`已跨平台匹配到 ${result.matchPlatform} 音源`)
-    return { resolved, platform: result.matchPlatform, musicInfo: sel.musicInfo }
+    return { resolved, platform: result.matchPlatform, musicInfo: sel.musicInfo! }
   } catch {
     return null
   }
@@ -1624,14 +1678,14 @@ async function processTask(task: DownloadTaskRow) {
 
     let fileSize: number | null = null
     try {
-      fileSize = statSync(filePath).size
+      fileSize = statSync(filePath!).size
     } catch {
       fileSize = null
     }
 
     // 试听检测：有期望时长则对比；否则兜底识别常见固定试听时长
     {
-      const actual = await probeAudioDurationSeconds(filePath)
+      const actual = await probeAudioDurationSeconds(filePath!)
       if (actual != null) {
         if (expectedDuration && expectedDuration > 0 && isLikelyPreviewClip(actual, expectedDuration)) {
           throw previewClipError(actual, expectedDuration)
@@ -1668,7 +1722,7 @@ async function processTask(task: DownloadTaskRow) {
 
     // 元数据：基础字段 + 封面 +（仅内嵌模式）歌词
     const metaResult = await writeAudioMetadata(
-      filePath,
+      filePath!,
       {
         title: task.title,
         artist: task.artist,
@@ -1706,9 +1760,10 @@ async function processTask(task: DownloadTaskRow) {
       file_size: fileSize,
       error: null,
     })
+    invalidateScanCache()
   } catch (err: any) {
     // 失败/取消：恢复手动匹配前备份的旧成品，避免数据丢失
-    let pendingInfo: Record<string, any> = {}
+    let pendingInfo: Record<string, any>
     try {
       pendingInfo = JSON.parse(task.music_info_json || '{}')
     } catch {

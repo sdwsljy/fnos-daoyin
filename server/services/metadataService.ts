@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname, basename, extname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { sniffAudioExt } from '../utils/audioSniff'
+import { safeFetch } from '../utils/ssrfGuard'
 
 let ffmpegAvailable: boolean | null = null
 
@@ -88,13 +89,13 @@ function coverUrlCandidates(raw: string): string[] {
 
 async function downloadCoverRaw(url: string, dest: string): Promise<boolean> {
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: {
         'User-Agent': 'daoyin/1.0',
         Referer: 'https://music.163.com/',
       },
-      signal: AbortSignal.timeout(20000),
       redirect: 'follow',
+      timeoutMs: 20000,
     })
     if (!res.ok) return false
     const buf = Buffer.from(await res.arrayBuffer())
@@ -274,7 +275,10 @@ export async function writeAudioMetadata(
 
   const add = (k: string, v: unknown) => {
     if (v == null || String(v).trim() === '') return
-    args.push('-metadata', `${k}=${String(v)}`)
+    // 去除控制字符，防止音源返回的换行等注入额外 metadata 字段
+    const cleaned = String(v).replace(/[\r\n\0\v\f]+/g, ' ').trim()
+    if (!cleaned) return
+    args.push('-metadata', `${k}=${cleaned}`)
   }
   add('title', meta.title)
   add('artist', meta.artist)

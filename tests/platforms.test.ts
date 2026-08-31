@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PLATFORM, PLATFORM_DISPLAY, isPlatformId, platformLabel, platformListText } from '../shared/platforms'
+import { PLATFORM_DISPLAY, isPlatformId, platformLabel, platformListText } from '../shared/platforms'
 
 describe('platforms', () => {
   it('defines five platforms', () => {

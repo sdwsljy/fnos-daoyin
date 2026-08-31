@@ -6,9 +6,9 @@
       <button class="btn-secondary" @click="loadSources">刷新</button>
       <button class="btn-secondary" @click="showForm = true">新增 URL</button>
       <button class="btn-secondary" @click="fileInput?.click()">上传 .js</button>
-      <input ref="fileInput" type="file" accept=".js" multiple hidden @change="onFiles" />
+      <input ref="fileInput" type="file" accept=".js" multiple hidden @change="onFiles" >
       <button class="btn-secondary" @click="openFolderPicker">上传文件夹</button>
-      <input ref="dirInput" type="file" multiple hidden webkitdirectory @change="onDirSelected" />
+      <input ref="dirInput" type="file" multiple hidden webkitdirectory @change="onDirSelected" >
       <button class="btn-secondary" @click="openImportText">批量导入</button>
       <button class="btn-secondary" @click="runCheck">检测</button>
       <button class="btn-secondary" @click="disableDead">停用失效</button>
@@ -70,7 +70,7 @@
         v-model="importText"
         rows="8"
         placeholder="每行一个名称 + URL，或纯 URL 列表"
-      ></textarea>
+      />
       <div class="import-actions">
         <button :disabled="importing" @click="startImport">
           {{ importing ? '导入中…' : '开始导入' }}

@@ -1,6 +1,5 @@
 import { checkSources } from '~~/server/services/sourceRegistry'
-import { runNdjsonBatch } from '~~/server/utils/ndjsonStream'
-import { wantsSourceBatchStream } from '~~/server/utils/ndjsonStream'
+import { runNdjsonBatch, wantsSourceBatchStream  } from '~~/server/utils/ndjsonStream'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ ids?: string[]; stream?: boolean }>(event).catch(() => undefined)

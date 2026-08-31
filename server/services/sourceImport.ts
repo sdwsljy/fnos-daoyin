@@ -24,8 +24,8 @@ export function cleanSourceName(raw: string): string {
   // 反复剥掉两侧装饰符（括号、引号、冒号、破折号等）
   for (let i = 0; i < 5; i++) {
     const next = s
-      .replace(/^[\s\[【\(（{<"「『《'`“”‘’\-—–_|:：·•.、,，;；]+/u, '')
-      .replace(/[\s\]】\)）}>"」』》'`“”‘’\-—–_|:：·•.、,，;；]+$/u, '')
+      .replace(/^[\s[【(（{<"「『《'`“”‘’\-—–_|:：·•.、,，;；]+/u, '')
+      .replace(/[\s\]】)）}>"」』》'`“”‘’\-—–_|:：·•.、,，;；]+$/u, '')
       .trim()
     if (next === s) break
     s = next

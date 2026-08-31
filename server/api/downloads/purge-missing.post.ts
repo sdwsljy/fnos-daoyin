@@ -3,8 +3,9 @@ import {
   deleteMissingFileRecords,
 } from '~~/server/services/downloadQueue'
 
-export default defineEventHandler(() => {
-  reconcileDownloadState()
+export default defineEventHandler(async () => {
+  await reconcileDownloadState()
   const deleted = deleteMissingFileRecords()
-  return { deleted, stats: reconcileDownloadState() }
+  const stats = await reconcileDownloadState()
+  return { deleted, stats }
 })

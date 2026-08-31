@@ -20,7 +20,7 @@
 import { ref } from 'vue'
 import { qualityLabel } from '~/utils/mediaLabels'
 
-const props = defineProps<{ current?: string }>()
+defineProps<{ current?: string }>()
 const emit = defineEmits<{ pick: [quality: string] }>()
 
 const options = ['flac24bit', 'flac', '320k', '192k', '128k']

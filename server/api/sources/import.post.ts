@@ -1,5 +1,4 @@
-import { runNdjsonBatch } from '~~/server/utils/ndjsonStream'
-import { wantsSourceBatchStream } from '~~/server/utils/ndjsonStream'
+import { runNdjsonBatch, wantsSourceBatchStream  } from '~~/server/utils/ndjsonStream'
 import { importSourcesText } from '~~/server/services/sourceRegistry'
 
 export default defineEventHandler(async (event) => {
@@ -11,7 +10,7 @@ export default defineEventHandler(async (event) => {
   if (wantsSourceBatchStream(event, body.stream)) {
     return await runNdjsonBatch(event, async (send) => {
       await send({ type: 'start', total: 0 })
-      const result = await importSourcesText(body.text, {
+      const result = await importSourcesText(body.text!, {
         onProgress: async (p) => {
           await send({ type: 'progress', ...p })
         },
@@ -23,5 +22,5 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return await importSourcesText(body.text)
+  return await importSourcesText(body.text!)
 })

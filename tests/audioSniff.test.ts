@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs'
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { sniffAudioExt } from '../server/utils/audioSniff'

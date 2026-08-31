@@ -35,6 +35,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   db.getDb().prepare('DELETE FROM download_tasks').run()
+  api.invalidateScanCache()
   for (const f of readdirSync(downDir)) {
     try {
       rmSync(join(downDir, f), { force: true })

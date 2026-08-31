@@ -12,7 +12,7 @@
           <select v-model="platform" class="platform-select">
             <option v-for="p in platforms" :key="p.id" :value="p.id">{{ p.label }}</option>
           </select>
-          <input v-model="keyword" type="search" placeholder="搜索歌曲 / 歌手" @keyup.enter="search" />
+          <input v-model="keyword" type="search" placeholder="搜索歌曲 / 歌手" @keyup.enter="search" >
           <button :disabled="searching" @click="search">
             {{ searching ? '搜索中…' : '搜索' }}
           </button>

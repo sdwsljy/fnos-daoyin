@@ -33,16 +33,16 @@ function readEnvMap(file: string): Record<string, string> {
     if (!trimmed || trimmed.startsWith('#')) continue
     const m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)='((?:\\'|[^'])*)'$/)
     if (m) {
-      out[m[1]] = m[2].replace(/\\'/g, "'")
+      out[m[1]!] = m[2]!.replace(/\\'/g, "'")
       continue
     }
     const m2 = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)
     if (m2) {
-      let v = m2[2]
+      let v = m2[2] ?? ''
       if ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"'))) {
         v = v.slice(1, -1)
       }
-      out[m2[1]] = v
+      out[m2[1]!] = v
     }
   }
   return out

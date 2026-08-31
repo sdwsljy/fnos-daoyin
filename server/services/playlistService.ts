@@ -5,10 +5,10 @@ import { request as httpRequestPlain } from 'node:http'
 import { URL } from 'node:url'
 import { searchPlatform } from './platformSearch'
 import { matchTrack, type MatchCandidate } from './trackMatcher'
-import { enqueueDownload } from './downloadQueue'
+import { enqueueDownload, enqueuePendingConfirm, checkExistingLocal, type ExistingCheckResult } from './downloadQueue'
 import { getSettings } from './settingsService'
 import { assertDownloadDirWritable } from '../utils/downloadDir'
-import { assertSafePublicUrl } from '../utils/ssrfGuard'
+import { safeFetch } from '../utils/ssrfGuard'
 
 export type PlaylistTrackDraft = {
   externalId?: string
@@ -225,12 +225,11 @@ export async function resolvePlaylistUrl(input: string): Promise<string> {
   for (let i = 0; i < 5; i++) {
     if (extractQqPlaylistId(current) || extractNeteasePlaylistId(current)) return current
 
-    await assertSafePublicUrl(current)
-
-    const res = await fetchWithTimeout(current, {
+    const res = await safeFetch(current, {
       method: 'GET',
       redirect: 'manual',
       headers: { 'User-Agent': UA, Referer: 'https://y.qq.com/' },
+      timeoutMs: 20000,
     })
 
     if (res.status >= 300 && res.status < 400) {
@@ -852,10 +851,46 @@ export async function matchAndEnqueuePlaylist(
   assertDownloadDirWritable(getSettings().downloadDir)
 
   const batchId = randomUUID()
-  const results: Array<{ title: string; ok: boolean; method?: string; error?: string; taskId?: string }> = []
+  const results: Array<{ title: string; ok: boolean; method?: string; error?: string; taskId?: string; pending?: boolean }> = []
+  let pendingCount = 0
+
+  // 批量预检本地存在状态：区分「已存在（同歌手）/ 多版本（同名不同歌手）/ 无」
+  const checkByKey = new Map<string, ExistingCheckResult>()
+  try {
+    const checkRes = checkExistingLocal(
+      draft.tracks.map((t) => ({
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        platform: t.platform,
+      })),
+    )
+    for (const r of checkRes.results) checkByKey.set(`${r.title}\u0000${r.artist}`, r)
+  } catch {
+    /* 预检失败不影响下载 */
+  }
 
   for (const track of draft.tracks) {
     try {
+      const check = checkByKey.get(`${track.title}\u0000${track.artist}`)
+
+      // 多版本：本地已有同名不同歌手 → 写入待确认，不直接下载，供用户对比决定
+      if (check?.state === 'multi_version' && check.versions.length) {
+        const task = enqueuePendingConfirm({
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          platform: track.platform,
+          quality: opts?.quality,
+          musicInfo: track.musicInfo,
+          externalId: track.externalId,
+          versions: check.versions,
+        })
+        pendingCount += 1
+        results.push({ title: track.title, ok: true, method: 'multi_version', pending: true, taskId: task.id })
+        continue
+      }
+
       // 已人工确认 / 预解析
       if (track.musicInfo) {
         const task = enqueueDownload({
@@ -917,6 +952,7 @@ export async function matchAndEnqueuePlaylist(
     playlistTitle: draft.title,
     total: draft.tracks.length,
     enqueued: results.filter((r) => r.ok).length,
+    pendingCount,
     results,
   }
 }

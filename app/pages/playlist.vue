@@ -9,7 +9,7 @@
 
     <template v-if="mode === 'link'">
     <div class="parse-bar">
-      <input v-model="url" type="text" placeholder="粘贴 wy / tx / kg 歌单链接" />
+      <input v-model="url" type="text" placeholder="粘贴 wy / tx / kg 歌单链接" >
       <button :disabled="parsing" @click="parse">
         {{ parsing ? '解析中…' : '解析歌单' }}
       </button>
@@ -27,7 +27,7 @@
         </select>
       </label>
       <label class="checkbox">
-        <input v-model="downloadLyric" type="checkbox" /> 歌词
+        <input v-model="downloadLyric" type="checkbox" > 歌词
       </label>
       <label v-if="downloadLyric" class="checkbox">
         写入方式
@@ -82,6 +82,7 @@
       v-if="enqueueResult"
       :total="enqueueResult.total"
       :enqueued="enqueueResult.enqueued"
+      :pending-count="enqueueResult.pendingCount || 0"
       :results="enqueueResult.results"
       @close="enqueueResult = null"
     />
@@ -117,7 +118,7 @@
 
       <div v-else-if="!board" class="boards">
         <button v-for="b in boards" :key="b.id" class="board-card" @click="selectBoard(b)">
-          <img v-if="b.cover" :src="b.cover" class="board-cover" loading="lazy" />
+          <img v-if="b.cover" :src="b.cover" class="board-cover" loading="lazy" >
           <div v-else class="board-cover placeholder">♪</div>
           <div class="board-card-meta">
             <div class="board-name">{{ b.name }}</div>
@@ -144,17 +145,17 @@
         </div>
 
         <div class="board-info card">
-          <img v-if="board.cover" :src="board.cover" class="board-info-cover" />
+          <img v-if="board!.cover" :src="board!.cover" class="board-info-cover" >
           <div v-else class="board-info-cover placeholder">♪</div>
           <div class="board-info-meta">
-            <h3 class="board-info-name">{{ board.name }}</h3>
+            <h3 class="board-info-name">{{ board!.name }}</h3>
             <div class="board-meta">
-              <span v-if="board.creator" class="meta-item">创建者 {{ board.creator }}</span>
-              <span v-if="board.playCount" class="meta-item">播放 {{ formatCount(board.playCount) }}</span>
-              <span v-if="board.collectCount" class="meta-item">收藏 {{ formatCount(board.collectCount) }}</span>
-              <span v-if="board.count" class="meta-item">{{ board.count }} 首</span>
+              <span v-if="board!.creator" class="meta-item">创建者 {{ board!.creator }}</span>
+              <span v-if="board!.playCount" class="meta-item">播放 {{ formatCount(board!.playCount) }}</span>
+              <span v-if="board!.collectCount" class="meta-item">收藏 {{ formatCount(board!.collectCount) }}</span>
+              <span v-if="board!.count" class="meta-item">{{ board!.count }} 首</span>
             </div>
-            <p v-if="board.desc" class="board-desc">{{ board.desc }}</p>
+            <p v-if="board!.desc" class="board-desc">{{ board!.desc }}</p>
           </div>
         </div>
 
@@ -166,7 +167,7 @@
             </select>
           </label>
           <label class="checkbox">
-            <input v-model="downloadLyric" type="checkbox" /> 歌词
+            <input v-model="downloadLyric" type="checkbox" > 歌词
           </label>
           <label v-if="downloadLyric" class="checkbox">
             写入方式
@@ -251,7 +252,7 @@ const quality = ref('flac24bit')
 const downloadLyric = ref(true)
 const lyricMode = ref<'external' | 'embedded'>('external')
 const confirmRow = ref<MatchRow | null>(null)
-const enqueueResult = ref<{ total: number; enqueued: number; results: Array<{ title: string; ok: boolean; error?: string }> } | null>(null)
+const enqueueResult = ref<{ total: number; enqueued: number; pendingCount?: number; results: Array<{ title: string; ok: boolean; error?: string; pending?: boolean }> } | null>(null)
 const qualityOptions = ['flac24bit', 'flac', '320k', '192k', '128k']
 
 const mode = ref<'link' | 'board'>('link')
@@ -266,7 +267,7 @@ const boardSort = ref<'hot' | 'new'>('hot')
 const sortOptions = [
   { id: 'hot', label: '最热' },
   { id: 'new', label: '最新' },
-]
+] as const
 const boards = ref<Array<{ id: string; name: string; cover?: string; count?: number; playCount?: number; collectCount?: number; creator?: string; desc?: string }>>([])
 const board = ref<{ id: string; name: string; cover?: string; count?: number; playCount?: number; collectCount?: number; creator?: string; desc?: string } | null>(null)
 const boardTracks = ref<Array<{ title: string; artist: string; album: string; duration: number; externalId: string; musicInfo: Record<string, any> }>>([])
@@ -441,7 +442,8 @@ async function boardEnqueueAll() {
         },
       })
       pendingCount = data.count || 0
-    } catch {
+    } catch (e: any) {
+      console.warn('[daoyin] 多版本入待确认失败：', e?.statusMessage || e?.message || e)
       pendingCount = 0
     }
   }
@@ -606,7 +608,8 @@ async function enqueueAll() {
     const data = await $fetch<{
       total: number
       enqueued: number
-      results: Array<{ title: string; ok: boolean; error?: string }>
+      pendingCount?: number
+      results: Array<{ title: string; ok: boolean; error?: string; pending?: boolean }>
     }>('/api/playlist/enqueue', {
       method: 'POST',
       body: {
@@ -641,7 +644,8 @@ async function parseAndEnqueue() {
     const data = await $fetch<{
       total: number
       enqueued: number
-      results: Array<{ title: string; ok: boolean; error?: string }>
+      pendingCount?: number
+      results: Array<{ title: string; ok: boolean; error?: string; pending?: boolean }>
     }>('/api/playlist/enqueue', {
       method: 'POST',
       body: {
@@ -658,7 +662,12 @@ async function parseAndEnqueue() {
     })
     draft.value = parsed
     enqueueResult.value = data
-    if (data.enqueued > 0) toast.success(`已入队 ${data.enqueued} 首`)
+    if (data.enqueued > 0 || data.pendingCount) {
+      const parts = []
+      if (data.enqueued > 0) parts.push(`已入队 ${data.enqueued} 首`)
+      if (data.pendingCount) parts.push(`多版本 ${data.pendingCount} 首已加入待确认`)
+      toast.success(parts.join('，'))
+    }
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '一键解析下载失败')
   } finally {

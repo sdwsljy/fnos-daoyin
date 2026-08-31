@@ -5,7 +5,7 @@
         <h3>{{ title }}</h3>
         <p class="dialog-body">{{ message }}</p>
         <label v-if="allowDeleteFiles" class="check-row">
-          <input v-model="deleteFiles" type="checkbox" /> 同时删除本地文件
+          <input v-model="deleteFiles" type="checkbox" > 同时删除本地文件
         </label>
         <div class="dialog-actions">
           <button class="btn-secondary" @click="emit('close')">取消</button>

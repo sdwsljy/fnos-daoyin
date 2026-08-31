@@ -1,12 +1,12 @@
 <template>
   <div v-if="busy" class="page-loading">
-    <div class="spinner"></div>
+    <div class="spinner"/>
     <span v-if="text">{{ text }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ busy?: boolean; text?: string }>()
+defineProps<{ busy?: boolean; text?: string }>()
 </script>
 
 <style scoped>

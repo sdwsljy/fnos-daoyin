@@ -1,6 +1,6 @@
 <template>
   <div class="cover" :class="`cover-${size}`">
-    <img v-if="src && !errored" :src="src" :alt="alt || 'cover'" loading="lazy" @error="errored = true" />
+    <img v-if="src && !errored" :src="src" :alt="alt || 'cover'" loading="lazy" @error="errored = true" >
     <div v-else class="cover-fallback">♪</div>
   </div>
 </template>

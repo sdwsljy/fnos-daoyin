@@ -2,14 +2,14 @@
   <Teleport to="body">
     <div class="dialog-mask" @click.self="emit('close')">
       <div class="dialog">
-        <h3>切换音质</h3>
-        <p class="dim">{{ task?.title }}</p>
+        <h3>{{ batch ? '批量换音质' : '切换音质' }}</h3>
+        <p class="dim">{{ batch ? `已选 ${count} 个任务` : task?.title }}</p>
         <select v-model="quality">
           <option v-for="q in qualityOptions" :key="q" :value="q">{{ label(q) }}</option>
         </select>
         <div class="dialog-actions">
           <button class="btn-secondary" @click="emit('close')">取消</button>
-          <button @click="confirm">重新下载</button>
+          <button @click="confirm">{{ batch ? '批量换音质并重新下载' : '重新下载' }}</button>
         </div>
       </div>
     </div>
@@ -21,7 +21,10 @@ import { ref } from 'vue'
 import { qualityLabel } from '~/utils/mediaLabels'
 import type { DownloadTask } from '~/composables/useDownloadEvents'
 
-defineProps<{ task: DownloadTask | null }>()
+withDefaults(
+  defineProps<{ task: DownloadTask | null; batch?: boolean; count?: number }>(),
+  { batch: false, count: 0 },
+)
 const emit = defineEmits<{ close: []; confirm: [quality: string] }>()
 
 const qualityOptions = ['flac24bit', 'flac', '320k', '192k', '128k']
