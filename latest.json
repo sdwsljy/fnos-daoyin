@@ -1,7 +1,7 @@
 {
   "version": "4.0.0",
   "tag": "v4.0.0",
-  "releasedAt": "2026-08-31T18:51:14.480Z",
+  "releasedAt": "2026-08-31T19:05:41.409Z",
   "changelog": "- 新增：全局试听播放器（底部播放条：封面 / 歌名 / 歌手、播放暂停、可拖动进度条与时长）。\n- 新增：排行榜、歌单详情歌曲支持试听。\n- 新增：试听歌词同步显示（解析 LRC，按播放进度高亮当前行）。",
   "downloads": {
     "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.0.0",
