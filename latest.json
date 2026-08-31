@@ -1,7 +1,7 @@
 {
   "version": "3.0.0",
   "tag": "v3.0.0",
-  "releasedAt": "2026-08-30T13:08:32.813Z",
+  "releasedAt": "2026-08-31T18:07:48.179Z",
   "changelog": "- 工程质量：TypeScript 类型检查 52 处错误清零、ESLint 24 处问题清零，新增 typecheck / lint 门禁。\n- 安全：歌词抓取接入 safeFetch，SSRF 加固覆盖音源脚本、歌单解析、封面、歌词全部出口。\n- 修复：关键路径静默失败改为可见日志（本地预检、多版本入待确认、统计/对账/音源加载等）。\n- 修复：消除 file_path 可空类型等历史类型隐患，音源脚本逃逸 payload 拦截、熔断与自愈异步化等健壮性完善。",
   "downloads": {
     "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v3.0.0",
