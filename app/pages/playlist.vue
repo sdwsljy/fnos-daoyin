@@ -132,10 +132,10 @@
         <div v-if="!boards.length" class="empty">暂无歌单</div>
       </div>
 
-      <div v-if="!board && boardListHasMore" class="load-more-wrap">
-        <button class="btn-secondary load-more" :disabled="loadingBoards" @click="loadMoreBoards">
-          {{ loadingBoards ? '加载中…' : '加载更多' }}
-        </button>
+      <div v-if="!board && boards.length" class="board-pager">
+        <button class="btn-secondary" :disabled="boardListPage <= 1 || loadingBoards" @click="goBoardPage(boardListPage - 1)">上一页</button>
+        <span class="page-num">第 {{ boardListPage }} 页</span>
+        <button class="btn-secondary" :disabled="!boardListHasMore || loadingBoards" @click="goBoardPage(boardListPage + 1)">下一页</button>
       </div>
 
       <div v-else class="board-view">
@@ -176,13 +176,27 @@
               <option value="embedded">内嵌到音频</option>
             </select>
           </label>
-          <button :disabled="boardEnqueueing || !boardTracks.length" @click="boardEnqueueAll">
-            {{ boardEnqueueing ? '入队中…' : `全部加入队列（${boardTracks.length}）` }}
+          <button :disabled="boardEnqueueing" @click="boardEnqueueAll">
+            {{ boardEnqueueing ? '入队中…' : `全部下载（${board!.count || '全部'}）` }}
+          </button>
+          <button v-if="selectedTracks.size" :disabled="boardEnqueueing" @click="boardEnqueueSelected">
+            下载选中（{{ selectedTracks.size }}）
           </button>
         </div>
 
         <div class="track-list">
+          <div class="track-list-head">
+            <label class="check">
+              <input type="checkbox" :checked="allSelected" @change="toggleAllTracks" > 全选
+            </label>
+          </div>
           <div v-for="t in boardTracks" :key="t.externalId + t.title" class="track-row">
+            <input
+              type="checkbox"
+              class="track-check"
+              :checked="selectedTracks.has(trackKey(t))"
+              @change="toggleTrack(t, ($event.target as HTMLInputElement).checked)"
+            >
             <div class="track-meta">
               <span class="track-title">{{ t.title }}</span>
               <span class="dim"> - {{ t.artist }}</span>
@@ -199,7 +213,11 @@
         </div>
 
         <div v-if="loadingTracks" class="hint">加载中…</div>
-        <button v-else-if="hasMore" class="btn-secondary load-more" @click="loadMore">加载更多</button>
+        <div v-else-if="boardTracks.length" class="board-pager">
+          <button class="btn-secondary" :disabled="boardPage <= 1" @click="goTrackPage(boardPage - 1)">上一页</button>
+          <span class="page-num">第 {{ boardPage }} 页</span>
+          <button class="btn-secondary" :disabled="!hasMore" @click="goTrackPage(boardPage + 1)">下一页</button>
+        </div>
       </div>
     </template>
 
@@ -216,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { platformLabel, qualityLabel } from '~/utils/mediaLabels'
 import { useToast } from '~/composables/useToast'
 import { useLocalExisting } from '~/composables/useLocalExisting'
@@ -260,7 +278,6 @@ const boardPlatforms = [
   { id: 'wy', label: '网易云' },
   { id: 'tx', label: 'QQ音乐' },
   { id: 'kg', label: '酷狗' },
-  { id: 'mg', label: '咪咕' },
 ]
 const boardPlatform = ref('wy')
 const boardSort = ref<'hot' | 'new'>('hot')
@@ -271,6 +288,7 @@ const sortOptions = [
 const boards = ref<Array<{ id: string; name: string; cover?: string; count?: number; playCount?: number; collectCount?: number; creator?: string; desc?: string }>>([])
 const board = ref<{ id: string; name: string; cover?: string; count?: number; playCount?: number; collectCount?: number; creator?: string; desc?: string } | null>(null)
 const boardTracks = ref<Array<{ title: string; artist: string; album: string; duration: number; externalId: string; musicInfo: Record<string, any> }>>([])
+const selectedTracks = ref<Set<string>>(new Set())
 const boardPage = ref(1)
 const hasMore = ref(false)
 const boardListPage = ref(1)
@@ -350,16 +368,16 @@ function changeBoardSort(sort: 'hot' | 'new') {
   loadBoards()
 }
 
-async function loadMoreBoards() {
-  if (loadingBoards.value || !boardListHasMore.value) return
+async function goBoardPage(page: number) {
+  if (loadingBoards.value || page < 1) return
   loadingBoards.value = true
   try {
     const data = await $fetch<{ items: Array<{ id: string; name: string; cover?: string; count?: number }>; hasMore: boolean }>('/api/playlist-board/boards', {
       method: 'POST',
-      body: { platform: boardPlatform.value, page: boardListPage.value + 1, sort: boardSort.value },
+      body: { platform: boardPlatform.value, page, sort: boardSort.value },
     })
-    boards.value = boards.value.concat(data.items || [])
-    boardListPage.value += 1
+    boards.value = data.items || []
+    boardListPage.value = page
     boardListHasMore.value = data.hasMore
   } catch (e: any) {
     toast.error(e?.statusMessage || e?.message || '歌单加载失败')
@@ -389,9 +407,9 @@ async function loadTracks(refresh = false) {
       method: 'POST',
       body: { platform: boardPlatform.value, playlistId: board.value.id, page: boardPage.value, refresh },
     })
-    if (refresh) boardTracks.value = data.items || []
-    else boardTracks.value = boardTracks.value.concat(data.items || [])
+    boardTracks.value = data.items || []
     hasMore.value = data.hasMore
+    selectedTracks.value = new Set()
     checkExisting(
       boardTracks.value.map((t) => ({
         title: t.title,
@@ -412,16 +430,85 @@ async function refreshBoardTracks() {
   await loadTracks(true)
 }
 
-async function loadMore() {
-  boardPage.value += 1
+async function goTrackPage(page: number) {
+  if (page < 1 || loadingTracks.value) return
+  boardPage.value = page
   await loadTracks()
 }
 
 async function boardEnqueueAll() {
-  if (!boardTracks.value.length) return
-  const multi = boardTracks.value.filter((t) => multiVersions(t).length)
-  const toEnqueue = boardTracks.value.filter((t) => !isExisting(t) && !multiVersions(t).length)
-  const skipped = boardTracks.value.length - toEnqueue.length - multi.length
+  if (!board.value) return
+  boardEnqueueing.value = true
+  try {
+    const data = await $fetch<{ total: number; enqueued: number; pendingCount: number; skipped: number }>('/api/playlist-board/enqueue-all', {
+      method: 'POST',
+      body: {
+        platform: boardPlatform.value,
+        playlistId: board.value.id,
+        quality: quality.value,
+        downloadLyric: downloadLyric.value,
+        lyricMode: lyricMode.value,
+      },
+    })
+    const parts = [`已入队 ${data.enqueued} 首`]
+    if (data.skipped) parts.push(`跳过已存在 ${data.skipped} 首`)
+    if (data.pendingCount) parts.push(`多版本 ${data.pendingCount} 首加入待确认`)
+    toast.success(parts.join('，'))
+  } catch (e: any) {
+    toast.error(e?.statusMessage || e?.message || '入队失败')
+  } finally {
+    boardEnqueueing.value = false
+  }
+}
+
+async function boardEnqueueOne(t: { title: string; artist: string; album: string; duration: number; externalId: string; musicInfo: Record<string, any> }) {
+  try {
+    const data = await $fetch<{ enqueued: number }>('/api/playlist-board/enqueue', {
+      method: 'POST',
+      body: {
+        platform: boardPlatform.value,
+        tracks: [t],
+        quality: quality.value,
+        downloadLyric: downloadLyric.value,
+        lyricMode: lyricMode.value,
+      },
+    })
+    if (data.enqueued > 0) toast.success(`已加入队列：${t.title}`)
+  } catch (e: any) {
+    toast.error(e?.statusMessage || e?.message || '入队失败')
+  }
+}
+
+function trackKey(t: { externalId: string; title: string }) {
+  return `${t.externalId}${t.title}`
+}
+
+const allSelected = computed(
+  () => boardTracks.value.length > 0 && selectedTracks.value.size === boardTracks.value.length,
+)
+
+function toggleTrack(t: { externalId: string; title: string }, checked: boolean) {
+  const next = new Set(selectedTracks.value)
+  if (checked) next.add(trackKey(t))
+  else next.delete(trackKey(t))
+  selectedTracks.value = next
+}
+
+function toggleAllTracks() {
+  const all = boardTracks.value.map((t) => trackKey(t))
+  if (selectedTracks.value.size === all.length) {
+    selectedTracks.value = new Set()
+  } else {
+    selectedTracks.value = new Set(all)
+  }
+}
+
+async function boardEnqueueSelected() {
+  const selected = boardTracks.value.filter((t) => selectedTracks.value.has(trackKey(t)))
+  if (!selected.length) return
+  const multi = selected.filter((t) => multiVersions(t).length)
+  const toEnqueue = selected.filter((t) => !isExisting(t) && !multiVersions(t).length)
+  const skipped = selected.length - toEnqueue.length - multi.length
 
   let pendingCount = 0
   if (multi.length) {
@@ -448,50 +535,29 @@ async function boardEnqueueAll() {
     }
   }
 
-  if (!toEnqueue.length) {
+  if (toEnqueue.length) {
+    try {
+      const data = await $fetch<{ total: number; enqueued: number }>('/api/playlist-board/enqueue', {
+        method: 'POST',
+        body: {
+          platform: boardPlatform.value,
+          tracks: toEnqueue,
+          quality: quality.value,
+          downloadLyric: downloadLyric.value,
+          lyricMode: lyricMode.value,
+        },
+      })
+      const parts = [`已入队 ${data.enqueued} 首`]
+      if (skipped) parts.push(`跳过已存在 ${skipped} 首`)
+      if (pendingCount) parts.push(`多版本 ${pendingCount} 首加入待确认`)
+      toast.success(parts.join('，'))
+    } catch (e: any) {
+      toast.error(e?.statusMessage || e?.message || '入队失败')
+    }
+  } else {
     toast.info(pendingCount ? `多版本 ${pendingCount} 首已加入待确认` : '所选歌曲均已下载')
-    return
   }
-
-  boardEnqueueing.value = true
-  try {
-    const data = await $fetch<{ total: number; enqueued: number }>('/api/playlist-board/enqueue', {
-      method: 'POST',
-      body: {
-        platform: boardPlatform.value,
-        tracks: toEnqueue,
-        quality: quality.value,
-        downloadLyric: downloadLyric.value,
-        lyricMode: lyricMode.value,
-      },
-    })
-    const parts = [`已入队 ${data.enqueued} 首`]
-    if (skipped) parts.push(`跳过已存在 ${skipped} 首`)
-    if (pendingCount) parts.push(`多版本 ${pendingCount} 首加入待确认`)
-    toast.success(parts.join('，'))
-  } catch (e: any) {
-    toast.error(e?.statusMessage || e?.message || '入队失败')
-  } finally {
-    boardEnqueueing.value = false
-  }
-}
-
-async function boardEnqueueOne(t: { title: string; artist: string; album: string; duration: number; externalId: string; musicInfo: Record<string, any> }) {
-  try {
-    const data = await $fetch<{ enqueued: number }>('/api/playlist-board/enqueue', {
-      method: 'POST',
-      body: {
-        platform: boardPlatform.value,
-        tracks: [t],
-        quality: quality.value,
-        downloadLyric: downloadLyric.value,
-        lyricMode: lyricMode.value,
-      },
-    })
-    if (data.enqueued > 0) toast.success(`已加入队列：${t.title}`)
-  } catch (e: any) {
-    toast.error(e?.statusMessage || e?.message || '入队失败')
-  }
+  selectedTracks.value = new Set()
 }
 
 const mvTarget = ref<{ item: { title: string; artist: string; album: string; externalId: string; musicInfo: Record<string, any> }; pendingId: string } | null>(null)
@@ -740,7 +806,6 @@ async function parseAndEnqueue() {
 
 .track-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
@@ -753,7 +818,27 @@ async function parseAndEnqueue() {
   outline: 1px solid var(--color-warning);
 }
 
+.track-check {
+  flex-shrink: 0;
+}
+
+.track-list-head {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.track-list-head .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .track-meta {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1010,10 +1095,16 @@ async function parseAndEnqueue() {
   margin: 16px auto 0;
 }
 
-.load-more-wrap {
+.board-pager {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 12px;
   margin-top: 16px;
+}
+
+.page-num {
+  color: var(--color-text-dim);
 }
 
 .hint {

@@ -1,5 +1,7 @@
 import { parseLooseJson } from './platformSearch'
 import { parsePlaylistById, type PlaylistTrackDraft } from './playlistService'
+import { enqueueDownload, enqueuePendingConfirm, checkExistingLocal } from './downloadQueue'
+import { randomUUID } from 'node:crypto'
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -69,7 +71,7 @@ function trackToMusicInfo(track: PlaylistTrackDraft): Record<string, any> {
   return info
 }
 
-const PAGE_SIZE = 30
+const PAGE_SIZE = 100
 
 /* ---------------- 网易云歌单 ---------------- */
 
@@ -150,38 +152,6 @@ async function listKgBoards(page: number, sort: PlaylistBoardSort): Promise<{ it
   return { items, hasMore: list.length >= 30 }
 }
 
-/* ---------------- 咪咕歌单 ---------------- */
-
-async function listMgBoards(page: number): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
-  const data = await fetchJson(
-    `https://app.c.nf.migu.cn/pc/bmw/page-data/playlist-square-recommend/v1.0?templateVersion=2&pageNo=${page}`,
-    {
-      headers: {
-        Referer: 'https://m.music.migu.cn/',
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
-      },
-    },
-  )
-  const items: PlaylistBoard[] = []
-  const seen = new Set<string>()
-  const walk = (contents: any[]) => {
-    for (const item of contents || []) {
-      if (item.contents?.length) walk(item.contents)
-      const id = item.resId || item.txt4 || (item.viewId?.startsWith('4006-') ? item.viewId.split('-')[1] : '')
-      if (id && item.txt && !seen.has(String(id))) {
-        seen.add(String(id))
-        items.push({
-          id: String(id),
-          name: String(item.txt || '').trim(),
-          cover: item.img || item.img2 || item.txt5 || undefined,
-        })
-      }
-    }
-  }
-  walk(data?.data?.contents || [])
-  return { items, hasMore: false }
-}
-
 /* ---------------- 缓存 ---------------- */
 
 const TTL_MS = 10 * 60 * 1000
@@ -228,7 +198,6 @@ export async function listPlaylistBoards(
   if (platform === 'wy') result = await listWyBoards(page, sort)
   else if (platform === 'tx') result = await listTxBoards(page, sort)
   else if (platform === 'kg') result = await listKgBoards(page, sort)
-  else if (platform === 'mg') result = await listMgBoards(page)
   else throw createError({ statusCode: 400, statusMessage: `暂不支持该平台歌单: ${platform}` })
   setCached(key, result)
   return result
@@ -260,4 +229,62 @@ export async function getPlaylistTracks(
   const result = { items, hasMore: start + slice.length < tracks.length }
   setCached(key, result)
   return result
+}
+
+/** 整歌单入队：解析完整歌单，已存在跳过、多版本入待确认、其余下载 */
+export async function enqueueAllPlaylistTracks(opts: {
+  platform: string
+  playlistId: string
+  quality?: string
+  downloadLyric?: boolean
+  lyricMode?: 'external' | 'embedded'
+}) {
+  const draft = await parsePlaylistById(opts.platform, opts.playlistId)
+  const tracks = draft.tracks || []
+
+  const checkRes = checkExistingLocal(
+    tracks.map((t) => ({ title: t.title, artist: t.artist, album: t.album, platform: t.platform })),
+  )
+  const checkByKey = new Map(checkRes.results.map((r) => [`${r.title}\u0000${r.artist}`, r]))
+
+  const batchId = randomUUID()
+  let enqueued = 0
+  let pendingCount = 0
+  let skipped = 0
+  for (const t of tracks) {
+    const c = checkByKey.get(`${t.title}\u0000${t.artist}`)
+    if (c?.state === 'exists') {
+      skipped += 1
+      continue
+    }
+    if (c?.state === 'multi_version' && c.versions.length) {
+      enqueuePendingConfirm({
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        platform: t.platform,
+        quality: opts.quality,
+        musicInfo: trackToMusicInfo(t),
+        externalId: t.externalId,
+        versions: c.versions,
+      })
+      pendingCount += 1
+      continue
+    }
+    enqueueDownload({
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      platform: t.platform,
+      quality: opts.quality,
+      musicInfo: trackToMusicInfo(t),
+      externalId: t.externalId,
+      matchMethod: 'id',
+      downloadLyric: opts.downloadLyric,
+      lyricMode: opts.lyricMode,
+      batchId,
+    })
+    enqueued += 1
+  }
+  return { total: tracks.length, enqueued, pendingCount, skipped }
 }

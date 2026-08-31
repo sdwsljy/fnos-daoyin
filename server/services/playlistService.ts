@@ -523,7 +523,6 @@ function playlistUrlOf(platform: string, id: string): string {
   if (platform === 'wy') return `https://music.163.com/playlist?id=${id}`
   if (platform === 'tx') return `https://y.qq.com/n/ryqq/playlist/${id}`
   if (platform === 'kg') return `https://www.kugou.com/yy/special/single/${id}.html`
-  if (platform === 'mg') return `https://music.migu.cn/v3/music/playlist/${id}`
   return `${platform}:${id}`
 }
 
@@ -533,43 +532,7 @@ export async function parsePlaylistById(platform: string, id: string): Promise<P
   if (platform === 'wy') return parseNeteasePlaylist(id, url)
   if (platform === 'tx') return parseQqPlaylist(id, url)
   if (platform === 'kg') return parseKugouPlaylist(id, url)
-  if (platform === 'mg') return parseMgPlaylist(id, url)
   throw createError({ statusCode: 400, statusMessage: `暂不支持该平台歌单: ${platform}` })
-}
-
-async function parseMgPlaylist(id: string, url: string): Promise<PlaylistDraft> {
-  const MG_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
-  const infoRes = await fetchWithTimeout(`https://c.musicapp.migu.cn/MIGUM3.0/resource/playlist/v2.0?playlistId=${id}`, {
-    headers: { Referer: 'https://music.migu.cn', 'User-Agent': MG_UA },
-  })
-  const infoData = await infoRes.json()
-  const title = infoData?.data?.title || `歌单 ${id}`
-
-  const all: PlaylistTrackDraft[] = []
-  let page = 1
-  let total = 0
-  while (true) {
-    const res = await fetchWithTimeout(
-      `https://app.c.nf.migu.cn/MIGUM3.0/resource/playlist/song/v2.0?pageNo=${page}&pageSize=50&playlistId=${id}`,
-      { headers: { Referer: 'https://m.music.migu.cn/', 'User-Agent': MG_UA } },
-    )
-    const data = await res.json()
-    if (data?.code !== '000000' && data?.code !== 0) throw new Error('无法获取咪咕歌单')
-    total = parseInt(data?.data?.totalCount, 10) || total
-    const batch: PlaylistTrackDraft[] = (data?.data?.songList || []).map((item: any) => ({
-      externalId: item.copyrightId || item.songId || '',
-      title: String(item.songName || '').trim() || '未知',
-      artist: (item.singerList || []).map((s: any) => s?.name).filter(Boolean).join(' / ') || '未知',
-      album: String(item.album || '').trim(),
-      duration: Number(item.duration || 0) || undefined,
-      platform: 'mg',
-    }))
-    all.push(...batch)
-    if (!batch.length || all.length >= total) break
-    page += 1
-  }
-  if (!all.length) throw new Error('咪咕歌单无曲目或接口失败')
-  return { platform: 'mg', title, url, tracks: all }
 }
 
 async function parseNeteasePlaylist(id: string, url: string): Promise<PlaylistDraft> {
