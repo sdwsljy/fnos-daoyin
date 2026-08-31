@@ -1,7 +1,7 @@
 {
   "version": "4.0.1",
   "tag": "v4.0.1",
-  "releasedAt": "2026-08-31T19:05:41.409Z",
+  "releasedAt": "2026-08-31T19:18:06.958Z",
   "changelog": "- 新增：试听音量调节。\n- 优化：试听改为速度优先（从最低音质 128k 起尝试，文件更小、加载更快）。",
   "downloads": {
     "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.0.1",
