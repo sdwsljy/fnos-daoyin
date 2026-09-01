@@ -1,6 +1,6 @@
 <template>
-  <div v-if="player.url" class="player-bar">
-    <div class="player-seek">
+  <div class="player-bar">
+    <div v-if="hasTrack" class="player-seek">
       <input
         type="range"
         :max="player.duration || 0"
@@ -12,16 +12,16 @@
     </div>
     <div class="player-row">
       <div class="player-track">
-        <img v-if="player.cover" :src="player.cover" class="player-cover" >
+        <img v-if="hasTrack && player.cover" :src="player.cover" class="player-cover" >
         <div v-else class="player-cover placeholder">♪</div>
         <div class="player-info">
-          <div class="player-title">{{ player.title }}</div>
-          <div class="player-artist">{{ player.artist }}</div>
+          <div class="player-title" :class="{ dim: !hasTrack }">{{ hasTrack ? player.title : '暂无播放' }}</div>
+          <div class="player-artist">{{ hasTrack ? player.artist : '从搜索 / 排行榜 / 歌单试听歌曲' }}</div>
         </div>
       </div>
 
       <div class="player-controls">
-        <button class="ctl-btn" :class="{ active: player.playing }" @click="toggle">
+        <button class="ctl-btn" :class="{ active: player.playing }" :disabled="!hasTrack" @click="toggle">
           <svg v-if="!player.playing" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M8 5v14l11-7z" fill="currentColor" />
           </svg>
@@ -31,9 +31,9 @@
         </button>
       </div>
 
-      <div class="player-time">{{ fmt(player.currentTime) }} / {{ fmt(player.duration) }}</div>
+      <div v-if="hasTrack" class="player-time">{{ fmt(player.currentTime) }} / {{ fmt(player.duration) }}</div>
 
-      <button class="ctl-btn ghost" :class="{ active: showLyric }" @click="showLyric = !showLyric">
+      <button v-if="hasTrack" class="ctl-btn ghost" :class="{ active: showLyric }" @click="showLyric = !showLyric">
         歌词
       </button>
 
@@ -49,7 +49,7 @@
         >
       </div>
 
-      <button class="ctl-btn ghost" title="关闭" @click="stop">✕</button>
+      <button v-if="hasTrack" class="ctl-btn ghost" title="关闭" @click="stop">✕</button>
     </div>
 
     <div v-if="showLyric" class="player-lyric">
@@ -67,6 +67,7 @@ import { usePlayer } from '~/composables/usePlayer'
 
 const { player, toggle, seek, setVolume, stop } = usePlayer()
 const showLyric = ref(false)
+const hasTrack = computed(() => !!player.value.url)
 
 type LyricLine = { time: number; text: string }
 
@@ -185,6 +186,11 @@ function fmt(sec: number) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.player-title.dim {
+  color: var(--color-text-dim);
+  font-weight: 500;
 }
 
 .player-artist {

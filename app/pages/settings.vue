@@ -166,7 +166,16 @@ const {
   openSystemAppSetting,
   bindAuthMessage,
 } = useFnOsDirAuth()
-const { update, check: checkUpdate } = useAppUpdate()
+const { update, check } = useAppUpdate()
+
+async function checkUpdate() {
+  await check()
+  if (update.value?.hasUpdate) {
+    toast.success(`发现新版本 v${update.value.latest?.version}`)
+  } else {
+    toast.info('已是最新版本')
+  }
+}
 
 const runtimeConfig = useRuntimeConfig()
 const version = runtimeConfig.public.appVersion
