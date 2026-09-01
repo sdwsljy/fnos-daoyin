@@ -1,10 +1,10 @@
 {
-  "version": "4.1.1",
-  "tag": "v4.1.1",
-  "releasedAt": "2026-09-01T13:31:40.062Z",
-  "changelog": "- 播放栏常驻显示：无试听时也显示底部播放栏（占位态）。\n- 优化：「检查更新」增加结果提示（发现新版本 / 已是最新版本）。",
+  "version": "4.1.2",
+  "tag": "v4.1.2",
+  "releasedAt": "2026-09-01T14:22:32.678Z",
+  "changelog": "- 修复：鉴权模式下登录成功后被弹回登录页、无法进入应用。",
   "downloads": {
-    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.1.1",
-    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.1.1/daoyin-v4.1.1.fpk"
+    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.1.2",
+    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.1.2/daoyin-v4.1.2.fpk"
   }
 }
