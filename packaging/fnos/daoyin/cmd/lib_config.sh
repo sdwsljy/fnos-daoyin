@@ -32,12 +32,18 @@ miyin_gen_session_secret() {
 # AUTH_TOKEN 允许为空：空 = 开放模式（免登录）。
 miyin_write_config_from_wizard() {
   local token="${wizard_auth_token-}"
+  local auth_mode="${wizard_auth_mode-}"
   local mode="${wizard_download_mode:-default}"
   local custom_dir="${wizard_download_dir:-}"
   local secret=""
 
+  # 选择「关闭鉴权」时强制清除口令，确保能可靠退出鉴权模式
+  if [ "$auth_mode" = "open" ]; then
+    token=""
+  fi
+
   if [ -n "$token" ] && [ "${#token}" -lt 6 ]; then
-    echo "访问口令至少 6 位，或留空以关闭鉴权" >"${TRIM_TEMP_LOGFILE:-/dev/stderr}"
+    echo "访问口令至少 6 位，或选择「关闭鉴权」" >"${TRIM_TEMP_LOGFILE:-/dev/stderr}"
     return 1
   fi
 

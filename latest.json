@@ -1,10 +1,10 @@
 {
-  "version": "4.1.2",
-  "tag": "v4.1.2",
-  "releasedAt": "2026-09-01T14:22:32.678Z",
-  "changelog": "- 修复：鉴权模式下登录成功后被弹回登录页、无法进入应用。",
+  "version": "4.1.3",
+  "tag": "v4.1.3",
+  "releasedAt": "2026-09-01T14:55:32.061Z",
+  "changelog": "- 修复：配置向导无法清除访问口令（新增「访问控制」开关，显式关闭鉴权进入开放模式）。",
   "downloads": {
-    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.1.2",
-    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.1.2/daoyin-v4.1.2.fpk"
+    "releasePage": "https://github.com/sdwsljy/fnos-daoyin/releases/tag/v4.1.3",
+    "fpk": "https://github.com/sdwsljy/fnos-daoyin/releases/download/v4.1.3/daoyin-v4.1.3.fpk"
   }
 }

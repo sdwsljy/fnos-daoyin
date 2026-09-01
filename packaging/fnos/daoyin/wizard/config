@@ -3,20 +3,42 @@
     "stepTitle": "访问与鉴权",
     "items": [
       {
+        "type": "radio",
+        "field": "wizard_auth_mode",
+        "label": "访问控制",
+        "initValue": "open",
+        "options": [
+          {
+            "label": "关闭鉴权（开放模式，免登录）",
+            "value": "open"
+          },
+          {
+            "label": "启用访问口令（需登录）",
+            "value": "auth"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择访问控制方式"
+          }
+        ]
+      },
+      {
         "type": "password",
         "field": "wizard_auth_token",
-        "label": "访问口令（AUTH_TOKEN，选填）",
+        "label": "访问口令（启用鉴权时必填）",
         "initValue": "",
         "rules": [
           {
             "pattern": "^$|^.{6,}$",
-            "message": "口令至少 6 位，或留空以关闭鉴权"
+            "message": "口令至少 6 位"
           }
         ]
       },
       {
         "type": "tips",
-        "helpText": "留空关闭鉴权；填写则启用登录。修改后将写入配置并重启服务。SESSION_SECRET 保持安装时生成的值不变。"
+        "helpText": "选择「关闭鉴权」可清除已设置的口令，进入开放模式（无登录页）。选择「启用访问口令」则填写口令并登录后使用。修改后将写入配置并重启服务。"
       }
     ]
   },
