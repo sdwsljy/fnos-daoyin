@@ -34,21 +34,29 @@ async function submit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  min-height: 100vh;
 }
 
 .login-card {
-  width: 360px;
+  width: 380px;
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   align-items: center;
+  padding: 36px 32px;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
 }
 
 .login-card h1 {
   margin: 0;
-  color: var(--color-accent);
+  font-size: 26px;
+  font-weight: 800;
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .dim {
@@ -65,5 +73,6 @@ form {
 
 .login-btn {
   width: 100%;
+  height: 46px;
 }
 </style>

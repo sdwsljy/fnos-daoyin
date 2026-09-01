@@ -1,6 +1,6 @@
 <template>
   <div class="queue-page">
-    <h2>下载队列</h2>
+    <h1 class="page-title">下载队列</h1>
 
     <div class="toolbar">
       <button class="btn-secondary" @click="refresh">刷新</button>
@@ -867,8 +867,9 @@ onUnmounted(() => {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .queue-search {
@@ -885,11 +886,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
   border: 1px solid var(--color-warning);
-  border-radius: var(--radius);
-  background: var(--color-warning-soft, var(--color-bg-elev));
+  border-radius: var(--radius-lg);
+  background: var(--color-warning-soft);
 }
 
 .missing-text {
@@ -903,15 +904,15 @@ onUnmounted(() => {
 }
 
 .reconcile-panel {
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
 }
 
 .reconcile-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .reconcile-title {
@@ -985,15 +986,15 @@ onUnmounted(() => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .filter-tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
-  border-radius: var(--radius);
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-dim);
@@ -1009,8 +1010,8 @@ onUnmounted(() => {
 
 .filter-count {
   font-size: 11px;
-  padding: 0 6px;
-  border-radius: 8px;
+  padding: 0 7px;
+  border-radius: 999px;
   background: var(--color-bg-elev2);
 }
 
@@ -1025,7 +1026,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 8px 12px;
+  padding: 10px 14px;
   margin-bottom: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -1053,6 +1054,11 @@ onUnmounted(() => {
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 8px;
+  transition: background 0.15s ease;
+}
+
+.task:hover {
+  background: var(--color-bg-elev2);
 }
 
 .task-main {
@@ -1115,25 +1121,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.status-queued {
-  color: var(--color-warning);
-}
-.status-running {
-  color: var(--color-accent);
-}
-.status-completed {
-  color: var(--color-success);
-}
-.status-failed {
-  color: var(--color-danger);
-}
-.status-cancelled {
-  color: var(--color-text-dim);
-}
-.status-pending_confirm {
-  color: var(--color-warning);
 }
 
 .pending-note {

@@ -1,10 +1,10 @@
 <template>
   <div class="playlist-page">
-    <h2>歌单下载</h2>
+    <h1 class="page-title">歌单下载</h1>
 
     <div class="mode-tabs">
-      <button class="mode-tab" :class="{ active: mode === 'link' }" @click="mode = 'link'">链接导入</button>
       <button class="mode-tab" :class="{ active: mode === 'board' }" @click="mode = 'board'">歌单广场</button>
+      <button class="mode-tab" :class="{ active: mode === 'link' }" @click="mode = 'link'">链接导入</button>
     </div>
 
     <template v-if="mode === 'link'">
@@ -138,7 +138,7 @@
         <button class="btn-secondary" :disabled="!boardListHasMore || loadingBoards" @click="goBoardPage(boardListPage + 1)">下一页</button>
       </div>
 
-      <div v-else class="board-view">
+      <div v-else-if="board" class="board-view">
         <div class="board-head">
           <button class="btn-secondary" @click="board = null">返回歌单</button>
           <button class="btn-secondary" @click="refreshBoardTracks">刷新</button>
@@ -275,7 +275,7 @@ const confirmRow = ref<MatchRow | null>(null)
 const enqueueResult = ref<{ total: number; enqueued: number; pendingCount?: number; results: Array<{ title: string; ok: boolean; error?: string; pending?: boolean }> } | null>(null)
 const qualityOptions = ['flac24bit', 'flac', '320k', '192k', '128k']
 
-const mode = ref<'link' | 'board'>('link')
+const mode = ref<'link' | 'board'>('board')
 const boardPlatforms = [
   { id: 'wy', label: '网易云' },
   { id: 'tx', label: 'QQ音乐' },
@@ -330,6 +330,7 @@ async function loadDefaults() {
 
 onMounted(() => {
   loadDefaults()
+  if (mode.value === 'board') loadBoards()
 })
 
 watch(mode, (m) => {
@@ -752,8 +753,16 @@ async function parseAndEnqueue() {
 <style scoped>
 .parse-bar {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 16px;
+}
+
+.parse-bar input {
+  height: 44px;
+}
+
+.parse-bar button {
+  white-space: nowrap;
 }
 
 .download-opts {
@@ -761,7 +770,7 @@ async function parseAndEnqueue() {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 10px 14px;
+  padding: 12px 16px;
   margin-bottom: 16px;
 }
 
@@ -803,6 +812,10 @@ async function parseAndEnqueue() {
   font-size: 13px;
 }
 
+.checkbox select {
+  width: auto;
+}
+
 .track-list {
   max-height: 480px;
   overflow-y: auto;
@@ -815,14 +828,19 @@ async function parseAndEnqueue() {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 7px 10px;
   border-radius: var(--radius);
   background: var(--color-bg);
   font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.track-row:hover {
+  background: var(--color-bg-elev2);
 }
 
 .track-row.warn {
-  outline: 1px solid var(--color-warning);
+  box-shadow: inset 0 0 0 1px var(--color-warning);
 }
 
 .track-check {
@@ -832,7 +850,7 @@ async function parseAndEnqueue() {
 .track-list-head {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 4px 10px;
 }
 
 .track-list-head .check {
@@ -850,6 +868,10 @@ async function parseAndEnqueue() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track-title {
+  font-weight: 600;
 }
 
 .warn-badge {
@@ -894,23 +916,25 @@ async function parseAndEnqueue() {
 
 .mode-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 6px;
+  margin-bottom: 20px;
 }
 
 .mode-tab {
   background: var(--color-bg-elev);
   color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
 }
 
 .mode-tab.active {
-  background: var(--color-primary);
+  background: var(--grad-brand);
   color: #fff;
+  border-color: transparent;
 }
 
 .board-platform-tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
@@ -918,17 +942,19 @@ async function parseAndEnqueue() {
 .platform-tab {
   background: var(--color-bg-elev);
   color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
 }
 
 .platform-tab.active {
-  background: var(--color-primary);
+  background: var(--grad-brand);
   color: #fff;
+  border-color: transparent;
 }
 
 .sort-tabs {
   display: flex;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .sort-tab {
@@ -943,20 +969,20 @@ async function parseAndEnqueue() {
 .sort-tab.active {
   color: var(--color-accent);
   border-bottom-color: var(--color-accent);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .boards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .board-card {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  padding: 10px;
+  padding: 12px;
   border-radius: var(--radius-lg);
   background: var(--color-bg-elev);
   border: 1px solid var(--color-border);
@@ -969,23 +995,24 @@ async function parseAndEnqueue() {
 .board-card:hover {
   background: var(--color-bg-elev2);
   border-color: var(--color-accent);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .board-cover {
-  width: 64px;
-  height: 64px;
-  border-radius: 8px;
+  width: 68px;
+  height: 68px;
+  border-radius: var(--radius);
   object-fit: cover;
   flex-shrink: 0;
   background: var(--color-bg-elev2);
+  box-shadow: var(--shadow-sm);
 }
 
 .board-cover.placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-dim);
+  color: var(--color-text-faint);
 }
 
 .board-card-meta {
@@ -1024,25 +1051,26 @@ async function parseAndEnqueue() {
 
 .board-info {
   display: flex;
-  gap: 16px;
+  gap: 18px;
   align-items: flex-start;
-  padding: 16px;
+  padding: 20px;
 }
 
 .board-info-cover {
-  width: 120px;
-  height: 120px;
-  border-radius: 12px;
+  width: 128px;
+  height: 128px;
+  border-radius: var(--radius-lg);
   object-fit: cover;
   flex-shrink: 0;
   background: var(--color-bg-elev2);
+  box-shadow: var(--shadow);
 }
 
 .board-info-cover.placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-dim);
+  color: var(--color-text-faint);
   font-size: 40px;
 }
 
@@ -1052,14 +1080,14 @@ async function parseAndEnqueue() {
 }
 
 .board-info-name {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 10px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1.3;
 }
 
 .board-desc {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-dim);
@@ -1083,6 +1111,7 @@ async function parseAndEnqueue() {
 
 .board-head h3 {
   margin: 0;
+  font-size: 18px;
 }
 
 .board-meta {

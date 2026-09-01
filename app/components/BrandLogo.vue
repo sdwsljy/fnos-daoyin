@@ -2,8 +2,8 @@
   <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
     <defs>
       <linearGradient id="brand-grad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#2dd4bf" />
-        <stop offset="100%" stop-color="#0d9488" />
+        <stop offset="0%" stop-color="#ff5c7a" />
+        <stop offset="100%" stop-color="#fa2d48" />
       </linearGradient>
     </defs>
     <circle cx="16" cy="16" r="14" fill="url(#brand-grad)" />

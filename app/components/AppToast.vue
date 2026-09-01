@@ -17,23 +17,25 @@ const { toasts } = useToast()
 <style scoped>
 .toast-wrap {
   position: fixed;
-  top: 64px;
-  left: 50%;
+  top: 24px;
+  left: calc(var(--sidebar-width) + (100vw - var(--sidebar-width)) / 2);
   transform: translateX(-50%);
   z-index: 1000;
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: center;
+  pointer-events: none;
 }
 
 .toast-item {
-  padding: 10px 18px;
-  border-radius: var(--radius);
+  padding: 11px 20px;
+  border-radius: var(--radius-pill);
   color: #fff;
   background: var(--color-bg-elev2);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
   max-width: 80vw;
+  font-weight: 500;
 }
 
 .toast-success {

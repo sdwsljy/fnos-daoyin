@@ -1,6 +1,6 @@
 <template>
   <div class="sources-page">
-    <h2>音源管理</h2>
+    <h1 class="page-title">音源管理</h1>
 
     <div class="toolbar">
       <button class="btn-secondary" @click="loadSources">刷新</button>
@@ -483,7 +483,7 @@ onMounted(loadSources)
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .empty {
@@ -502,8 +502,12 @@ onMounted(loadSources)
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px;
+  padding: 14px;
   transition: border-color 0.15s, background 0.15s;
+}
+
+.source-row:hover {
+  background: var(--color-bg-elev2);
 }
 
 .source-row.drag-over {
@@ -513,7 +517,7 @@ onMounted(loadSources)
 
 .drag-handle {
   cursor: grab;
-  color: var(--color-text-dim);
+  color: var(--color-text-faint);
   font-size: 18px;
   align-self: center;
   user-select: none;
@@ -546,16 +550,16 @@ onMounted(loadSources)
 .status {
   font-size: 12px;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
 .status-ok {
-  background: rgba(22, 163, 74, 0.15);
+  background: var(--color-success-soft);
   color: var(--color-success);
 }
 
 .status-dead {
-  background: rgba(220, 38, 38, 0.15);
+  background: var(--color-danger-soft);
   color: var(--color-danger);
 }
 

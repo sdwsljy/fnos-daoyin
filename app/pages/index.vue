@@ -14,6 +14,7 @@
       @skip="skipMv"
       @download="downloadMv"
     />
+    <h1 class="page-title">搜索</h1>
     <div class="search-bar">
       <div class="tabs">
         <button
@@ -28,8 +29,12 @@
         </button>
       </div>
       <form class="search-form" @submit.prevent="doSearch">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
         <input v-model="keyword" type="search" placeholder="搜索歌曲 / 歌手 / 专辑" >
-        <button type="submit" :disabled="searching">搜索</button>
+        <button type="submit" :disabled="searching">{{ searching ? '搜索中…' : '搜索' }}</button>
       </form>
     </div>
 
@@ -263,24 +268,36 @@ onUnmounted(() => {
 .search-bar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  background: var(--color-bg-elev);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .tab {
-  background: var(--color-bg-elev);
+  background: transparent;
   color: var(--color-text-dim);
+  padding: 7px 16px;
+  font-weight: 500;
 }
 
 .tab.active {
-  background: var(--color-primary);
+  background: var(--grad-brand);
   color: #fff;
+}
+
+.tab.active:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(250, 45, 72, 0.32);
 }
 
 .count {
@@ -291,11 +308,37 @@ onUnmounted(() => {
 
 .search-form {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  align-items: center;
+  position: relative;
 }
 
 .search-form input {
   flex: 1;
+  padding-left: 44px;
+  height: 46px;
+  font-size: 15px;
+  background: var(--color-bg-elev);
+}
+
+.search-form button {
+  height: 46px;
+  padding: 0 24px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--color-text-faint);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .searching {
@@ -305,6 +348,7 @@ onUnmounted(() => {
 
 .error-card p {
   margin: 0;
+  color: var(--color-danger);
 }
 
 .results {
@@ -316,14 +360,19 @@ onUnmounted(() => {
 .empty {
   text-align: center;
   color: var(--color-text-dim);
-  padding: 48px 0;
+  padding: 56px 0;
 }
 
 .result-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 14px;
+  padding: 12px 14px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.result-row:hover {
+  background: var(--color-bg-elev2);
 }
 
 .meta {
@@ -333,6 +382,7 @@ onUnmounted(() => {
 
 .title {
   font-weight: 600;
+  font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -349,13 +399,13 @@ onUnmounted(() => {
 .qualitys {
   display: flex;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 5px;
 }
 
 .quality-tag {
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
   background: var(--color-bg-elev2);
   color: var(--color-text-dim);
 }
@@ -363,6 +413,7 @@ onUnmounted(() => {
 .actions {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .play-btn {
@@ -371,7 +422,7 @@ onUnmounted(() => {
 
 .existing-btn {
   color: var(--color-success);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .mv-btn {
@@ -383,7 +434,7 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 22px;
 }
 
 .page-num {

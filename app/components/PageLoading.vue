@@ -19,8 +19,8 @@ defineProps<{ busy?: boolean; text?: string }>()
   gap: 16px;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(2px);
+  background: rgba(11, 11, 14, 0.6);
+  backdrop-filter: blur(4px);
 }
 
 .spinner {

@@ -1,6 +1,6 @@
 <template>
   <div class="rank-page">
-    <h2>排行榜</h2>
+    <h1 class="page-title">排行榜</h1>
 
     <div class="platform-tabs">
       <button
@@ -348,55 +348,60 @@ onMounted(() => {
 <style scoped>
 .platform-tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .platform-tab {
   background: var(--color-bg-elev);
   color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
 }
 
 .platform-tab.active {
-  background: var(--color-primary);
+  background: var(--grad-brand);
   color: #fff;
+  border-color: transparent;
 }
 
 .boards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .board-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 26px 16px;
   cursor: pointer;
   color: var(--color-text);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .board-item:hover {
   border-color: var(--color-accent);
   background: var(--color-bg-elev2);
+  transform: translateY(-2px);
 }
 
 .board-name {
   font-weight: 600;
+  font-size: 15px;
 }
 
 .board-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .board-head h3 {
   margin: 0;
+  font-size: 18px;
 }
 
 .download-opts {
@@ -404,7 +409,7 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 10px 14px;
+  padding: 12px 16px;
   margin-bottom: 16px;
 }
 
@@ -431,10 +436,15 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius);
   background: var(--color-bg-elev);
   font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.track-row:hover {
+  background: var(--color-bg-elev2);
 }
 
 .track-meta {

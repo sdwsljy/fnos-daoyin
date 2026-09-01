@@ -1,24 +1,42 @@
 <template>
   <div v-if="player.url" class="player-bar">
+    <div class="player-seek">
+      <input
+        type="range"
+        :max="player.duration || 0"
+        :value="player.currentTime"
+        step="0.1"
+        aria-label="播放进度"
+        @input="onSeek($event)"
+      >
+    </div>
     <div class="player-row">
-      <img v-if="player.cover" :src="player.cover" class="player-cover" >
-      <div v-else class="player-cover placeholder">♪</div>
-      <div class="player-info">
-        <div class="player-title">{{ player.title }}</div>
-        <div class="player-artist">{{ player.artist }}</div>
+      <div class="player-track">
+        <img v-if="player.cover" :src="player.cover" class="player-cover" >
+        <div v-else class="player-cover placeholder">♪</div>
+        <div class="player-info">
+          <div class="player-title">{{ player.title }}</div>
+          <div class="player-artist">{{ player.artist }}</div>
+        </div>
       </div>
-      <button class="btn-ghost" @click="toggle">{{ player.playing ? '暂停' : '播放' }}</button>
-      <div class="player-progress">
-        <input
-          type="range"
-          :max="player.duration || 0"
-          :value="player.currentTime"
-          step="0.1"
-          @input="onSeek($event)"
-        >
-        <span class="player-time">{{ fmt(player.currentTime) }} / {{ fmt(player.duration) }}</span>
+
+      <div class="player-controls">
+        <button class="ctl-btn" :class="{ active: player.playing }" @click="toggle">
+          <svg v-if="!player.playing" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5v14l11-7z" fill="currentColor" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" />
+          </svg>
+        </button>
       </div>
-      <button class="btn-ghost" :class="{ active: showLyric }" @click="showLyric = !showLyric">歌词</button>
+
+      <div class="player-time">{{ fmt(player.currentTime) }} / {{ fmt(player.duration) }}</div>
+
+      <button class="ctl-btn ghost" :class="{ active: showLyric }" @click="showLyric = !showLyric">
+        歌词
+      </button>
+
       <div class="player-volume">
         <span class="vol-icon">{{ player.volume === 0 ? '🔇' : '🔊' }}</span>
         <input
@@ -26,11 +44,14 @@
           :value="Math.round(player.volume * 100)"
           min="0"
           max="100"
+          aria-label="音量"
           @input="onVolume($event)"
         >
       </div>
-      <button class="btn-ghost" @click="stop">关闭</button>
+
+      <button class="ctl-btn ghost" title="关闭" @click="stop">✕</button>
     </div>
+
     <div v-if="showLyric" class="player-lyric">
       <div v-if="!lyricLines.length" class="lyric-empty">暂无歌词</div>
       <div v-for="(l, i) in lyricLines" :key="i" class="lyric-line" :class="{ active: i === activeLine }">
@@ -95,35 +116,55 @@ function fmt(sec: number) {
 <style scoped>
 .player-bar {
   position: fixed;
-  left: 0;
+  left: var(--sidebar-width);
   right: 0;
   bottom: 0;
   z-index: 900;
-  background: rgba(10, 14, 23, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(21, 21, 24, 0.82);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   border-top: 1px solid var(--color-border);
-  padding: 10px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  padding: 0 24px 12px;
+}
+
+.player-seek {
+  width: 100%;
+  height: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.player-seek input[type='range'] {
+  width: 100%;
+  margin: 0;
 }
 
 .player-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  max-width: 1100px;
+  gap: 18px;
+  max-width: 1160px;
   margin: 0 auto;
   width: 100%;
 }
 
+.player-track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
 .player-cover {
-  width: 42px;
-  height: 42px;
-  border-radius: 6px;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
   flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .player-cover.placeholder {
@@ -131,13 +172,12 @@ function fmt(sec: number) {
   align-items: center;
   justify-content: center;
   background: var(--color-bg-elev2);
-  color: var(--color-text-dim);
+  color: var(--color-text-faint);
   font-size: 18px;
 }
 
 .player-info {
   min-width: 0;
-  max-width: 220px;
 }
 
 .player-title {
@@ -155,17 +195,51 @@ function fmt(sec: number) {
   white-space: nowrap;
 }
 
-.player-progress {
-  flex: 1;
+.player-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 8px;
 }
 
-.player-progress input[type='range'] {
-  flex: 1;
-  min-width: 0;
+.ctl-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-elev2);
+  color: var(--color-text);
+  padding: 0;
+}
+
+.ctl-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ctl-btn.active {
+  background: var(--grad-brand);
+  color: #fff;
+}
+
+.ctl-btn.ghost {
+  background: transparent;
+  color: var(--color-text-dim);
+  font-size: 13px;
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+}
+
+.ctl-btn.ghost:hover:not(:disabled) {
+  background: var(--color-bg-elev2);
+  box-shadow: none;
+}
+
+.ctl-btn.ghost.active {
+  color: var(--color-accent);
+  background: transparent;
 }
 
 .player-time {
@@ -178,7 +252,7 @@ function fmt(sec: number) {
 .player-volume {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -187,18 +261,17 @@ function fmt(sec: number) {
 }
 
 .player-volume input[type='range'] {
-  width: 72px;
-}
-
-.player-bar button.active {
-  color: var(--color-accent);
+  width: 88px;
 }
 
 .player-lyric {
   max-height: 200px;
   overflow-y: auto;
   text-align: center;
-  padding: 4px 0;
+  padding: 8px 0 0;
+  max-width: 1160px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .lyric-line {

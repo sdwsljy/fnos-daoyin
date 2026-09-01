@@ -1,6 +1,6 @@
 <template>
   <div class="settings-page">
-    <h2>系统设置</h2>
+    <h1 class="page-title">系统设置</h1>
 
     <div v-if="loading" class="loading">
       <PageLoading :busy="true" />
@@ -257,6 +257,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  background: var(--color-warning-soft);
 }
 
 .fnos-warn p {
@@ -264,12 +265,13 @@ onUnmounted(() => {
 }
 
 .fnos-box {
-  padding: 12px;
+  padding: 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: var(--color-bg);
 }
 
 .fnos-title {
@@ -296,23 +298,26 @@ onUnmounted(() => {
   margin-bottom: 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 20px;
 }
 
 .section h3 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .field label {
   color: var(--color-text-dim);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .hint {
@@ -333,13 +338,16 @@ onUnmounted(() => {
 .checkbox {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: var(--color-text);
+  font-size: 14px;
 }
 
 .version {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
 }
 
 .update-avail {
@@ -347,6 +355,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
 }
 
 .actions {

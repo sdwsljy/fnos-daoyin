@@ -130,6 +130,47 @@ async function listTxBoards(page: number, sort: PlaylistBoardSort): Promise<{ it
 
 /* ---------------- 酷狗歌单 ---------------- */
 
+/** 解析酷狗「123.4万 / 1.2亿」类带单位计数为数值 */
+function parseCountStr(v: unknown): number {
+  if (v == null) return 0
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v) : 0
+  const s = String(v).trim()
+  if (!s) return 0
+  const n = parseFloat(s)
+  if (!Number.isFinite(n)) return 0
+  if (s.includes('亿')) return Math.round(n * 100000000)
+  if (s.includes('万')) return Math.round(n * 10000)
+  return Math.round(n)
+}
+
+/** 受限并发映射（酷狗列表接口不含歌曲数，需逐项补拉，控制并发避免被限流） */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let idx = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++
+      results[i] = await fn(items[i]!)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+async function fetchKgSpecialInfo(id: string): Promise<{ songcount?: number; imgurl?: string } | null> {
+  for (const host of ['http://mobilecdn.kugou.com', 'http://mobilecdnbj.kugou.com']) {
+    try {
+      const data = await fetchJson(`${host}/api/v3/special/info?specialid=${encodeURIComponent(id)}`, {
+        headers: { Referer: 'https://www.kugou.com/' },
+      })
+      if (data?.data) return data.data
+    } catch {
+      /* try next host */
+    }
+  }
+  return null
+}
+
 async function listKgBoards(page: number, sort: PlaylistBoardSort): Promise<{ items: PlaylistBoard[]; hasMore: boolean }> {
   // 酷狗歌单广场：yueku 接口（比 m.kugou.com 更稳，支持排序）
   const sortMap: Record<PlaylistBoardSort, string> = { hot: '6', new: '7' }
@@ -137,19 +178,31 @@ async function listKgBoards(page: number, sort: PlaylistBoardSort): Promise<{ it
   const data = await fetchJson(`http://www2.kugou.kugou.com/yueku/v9/special/getSpecial?is_ajax=1&cdn=cdn&t=${t}&c=&p=${page}`, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
   })
-  const list = data?.special_db || []
-  const items = list
+  const list: any[] = data?.special_db || []
+  const base: PlaylistBoard[] = list
     .map((p: any) => ({
       id: String(p.specialid),
       name: String(p.specialname || '').trim(),
-      cover: p.imgurl ? String(p.imgurl).replace('{size}', '400') : undefined,
-      count: Number(p.songcount || 0),
-      playCount: Number(p.play_count || p.total_play_count || 0),
+      cover: p.img ? String(p.img) : undefined,
+      count: 0,
+      playCount: parseCountStr(p.total_play_count ?? p.play_count),
+      collectCount: parseCountStr(p.collect_count),
       creator: p.nickname || p.singername || undefined,
       desc: p.intro || undefined,
     }))
     .filter((b: PlaylistBoard) => b.id && b.name)
-  return { items, hasMore: list.length >= 30 }
+
+  // 列表接口不含歌曲数，逐项拉取 special/info 补齐 songcount 与高清封面
+  const items = await mapLimit(base, 5, async (b) => {
+    const info = await fetchKgSpecialInfo(b.id)
+    if (info) {
+      if (Number(info.songcount) > 0) b.count = Number(info.songcount)
+      if (info.imgurl) b.cover = String(info.imgurl).replace('{size}', '400')
+    }
+    return b
+  })
+
+  return { items, hasMore: list.length >= 20 }
 }
 
 /* ---------------- 缓存 ---------------- */

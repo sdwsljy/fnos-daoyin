@@ -27,6 +27,7 @@ watch(
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .cover img {
@@ -34,11 +35,17 @@ watch(
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform 0.25s ease;
+}
+
+.cover:hover img {
+  transform: scale(1.05);
 }
 
 .cover-sm {
   width: 44px;
   height: 44px;
+  border-radius: var(--radius-sm);
 }
 .cover-md {
   width: 64px;
@@ -47,10 +54,11 @@ watch(
 .cover-lg {
   width: 120px;
   height: 120px;
+  border-radius: var(--radius-lg);
 }
 
 .cover-fallback {
-  color: var(--color-text-dim);
+  color: var(--color-text-faint);
   font-size: 20px;
 }
 </style>
